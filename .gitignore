@@ -1,0 +1,7 @@
+.claude/
+art/
+*.blend
+*.blend1
+__pycache__/
+Thumbs.db
+desktop.ini

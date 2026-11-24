@@ -1,0 +1,33 @@
+Trash Royal sound effects
+All clips are CC0 (public domain): free for any use, no credit required.
+Credit is listed anyway, with thanks. Clips were trimmed, mixed to mono and converted to WAV.
+
+Kenney (kenney.nl), CC0:
+  Impact Sounds   -> deploy, bonk, kick, stomp, whack, clank, crash, cap, can, hit
+  Interface Sounds -> pop, tick, nope
+
+OpenGameArt.org, CC0:
+  100 CC0 SFX (rubberduck)        -> plop, boom, ding, flush, slam
+  80 CC0 creature SFX (rubberduck) -> grunt, ptooey, rage, burp
+  25 CC0 bang/firework SFX (rubberduck) -> thwump, towerDown, dynamite
+  40 CC0 water/splash/slime SFX (rubberduck) -> splat
+  Gastric Distress -> fart
+  Sirens and Alarm Noise -> blinker
+  Steam release sounds -> hiss
+  glass bottle (open & close) -> bottle
+  Baby sound effect -> waah
+  Gunshot sound effect -> snipe
+  Donkey Bray -> heehaw
+  8 wet squish, slurp impacts (Independent.nu) -> squish
+  Squeaky Rat (qubodup) -> squeak
+  Crunchy bite -> chomp
+  Dog sounds -> yap
+  Bicycle Horn -> horn
+  Swishes Sound Pack -> whoosh
+  Classic fanfare lick -> win
+  Tiny vicious creature -> growl
+
+Goose honks, pigeon coos, the AK burst, Orville's speaker beat and a few
+others are generated in code (js/audio.js).
+
+toot.mp3 - The Toot spell sound, supplied by Erick (not CC0; his own pick).
