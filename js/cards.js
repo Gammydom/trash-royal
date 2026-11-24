@@ -170,7 +170,11 @@ function canPlace(owner, kind, x, y, ents) {
     ok = y <= 14.5 || (y <= 21.5 && ((x < 9 && leftDown) || (x >= 9 && rightDown)));
   }
   if (!ok) return false;
-  if (y > RIVER_TOP - 0.3 && y < RIVER_BOT + 0.3) return false;
+  if (y > RIVER_TOP - 0.3 && y < RIVER_BOT + 0.3) {
+    // the river is off limits, except a bridge whose lane is open (that side's enemy tower is down) - troops only, buildings would block it
+    const b = BRIDGES.find(bx => Math.abs(x - bx) <= 1);
+    if (kind !== 'troop' || b == null || !(b < 9 ? leftDown : rightDown)) return false;
+  }
   for (const e of ents) {
     if ((e.type === 'princess' || e.type === 'king') && e.hp > 0) {
       const dx = e.x - x, dy = e.y - y, rr = DEFS[e.type].r + 0.2;

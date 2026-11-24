@@ -575,10 +575,11 @@
     friends.forEach(name => {
       const on = Net.isOnline(name), info = Net.info(name);
       const row = document.createElement('div'); row.className = 'friend';
-      const status = on === true ? '<span class="on">● Online</span>' : on === undefined ? '<span>Checking...</span>' : '<span>Offline</span>';
+      const fight = on === true && info && info.fight;   // online but in a battle right now
+      const status = fight ? '<span class="fight">⚔️ In fight</span>' : on === true ? '<span class="on">● Online</span>' : on === undefined ? '<span>Checking...</span>' : '<span>Offline</span>';
       row.innerHTML = `${avatarHtml(name)}<div class="f-txt"><b></b>${status}${info ? ` <span>· ${ARENA_ICO} Arena ${(info.arena | 0) + 1}</span>` : ''}</div>
-        <button class="small-btn ${on === true ? 'gold' : 'gray'}">⚔️ Battle</button><button class="icon-btn" title="Remove">&#10005;</button>`;
-      row.querySelector('.avatar').insertAdjacentHTML('beforeend', `<span class="dot ${on === true ? 'on' : on === undefined ? 'wait' : ''}"></span>`);
+        <button class="small-btn ${on === true && !fight ? 'gold' : 'gray'}">⚔️ Battle</button><button class="icon-btn" title="Remove">&#10005;</button>`;
+      row.querySelector('.avatar').insertAdjacentHTML('beforeend', `<span class="dot ${fight ? 'busy' : on === true ? 'on' : on === undefined ? 'wait' : ''}"></span>`);
       row.querySelector('.f-txt b').textContent = name;
       row.children[2].onclick = () => { Sfx.init(); pickModeAndChallenge(name); };
       row.children[3].onclick = async () => {
@@ -629,23 +630,57 @@
 
   // challenges with a custom mode
   let lastMode = store.get('mode', 'classic');
+  const BOSS_IDS = Object.keys(BOSSES);
+  const okBoss = id => (typeof id === 'string' && BOSSES[id]) ? id : BOSS_IDS[0];
+  const okMap = i => Math.max(0, Math.min(ARENAS.length - 1, i | 0));
+  // draw a boss's first idle frame fitted into a small canvas
+  function bossPortrait(cv, id, grey) {
+    const sp = SPR['boss_' + id]; if (!sp) return;
+    const g = cv.getContext('2d'), F = sp.frame, bb = sp.bb || { x: 0, y: 0, w: F, h: F };
+    const s = Math.min(cv.width / bb.w, cv.height / bb.h) * 0.95;
+    g.clearRect(0, 0, cv.width, cv.height);
+    if (grey) g.filter = 'grayscale(1) brightness(0.55)';
+    g.drawImage(sp.img, bb.x, bb.y, bb.w, bb.h, (cv.width - bb.w * s) / 2, cv.height - bb.h * s, bb.w * s, bb.h * s);
+  }
+  // a row of 7 boss portraits to pick from; returns a getter for the pick
+  function bossPickerHtml(sel) {
+    return `<div class="pick-row" id="bossPick">${BOSS_IDS.map(id => `<div class="pick-opt boss ${id === sel ? 'on' : ''}" data-id="${id}"><canvas width="120" height="120"></canvas><span>${esc(BOSSES[id].name.split(' ')[0])}</span></div>`).join('')}</div>`;
+  }
+  function wireBossPicker(sel, onPick) {
+    document.querySelectorAll('#bossPick .pick-opt').forEach(el => {
+      bossPortrait(el.querySelector('canvas'), el.dataset.id);
+      el.onclick = () => { sel = el.dataset.id; document.querySelectorAll('#bossPick .pick-opt').forEach(o => o.classList.toggle('on', o === el)); Sfx.play('tick'); onPick(sel); };
+    });
+  }
   async function pickModeAndChallenge(name) {
     if (!Net.isReady()) { toast("You're offline. Online play isn't available right now."); return; }
     let pick = MODES.findIndex(m => m.id === lastMode); if (pick < 0) pick = 0;
-    const html = `<h3>Battle ${esc(name)}</h3><p>Pick a game mode</p><div class="mode-list">${MODES.map((m, i) =>
-      `<div class="mode-opt ${i === pick ? 'on' : ''}" data-i="${i}"><div><b>${esc(m.name)}</b><span>${esc(m.desc)}</span></div></div>`).join('')}</div>`;
+    let map = okMap(store.get('map', Progress.arena())), boss = okBoss(store.get('boss', ARENAS[Progress.arena()].boss));
+    const html = `<h3>Battle ${esc(name)}</h3>
+      <div class="pick-label">Map</div>
+      <div class="pick-row" id="mapPick">${ARENAS.map((ar, i) => `<div class="pick-opt map ${i === map ? 'on' : ''}" data-i="${i}" style="background-image:url(arenas/${ar.id}.webp?v=1)"><span>${esc(ar.name)}</span></div>`).join('')}</div>
+      <div class="pick-label">Game mode</div>
+      <div class="mode-list">${MODES.map((m, i) =>
+      `<div class="mode-opt ${i === pick ? 'on' : ''}" data-i="${i}"><div><b>${esc(m.name)}</b><span>${esc(m.desc)}</span></div></div>`).join('')}</div>
+      <div id="bossPickWrap" class="${MODES[pick].boss ? '' : 'hidden'}"><div class="pick-label">Your boss</div>${bossPickerHtml(boss)}</div>`;
     const p = modal(html, [{ label: 'Cancel', cls: 'gray' }, { label: 'Send challenge', cls: 'green' }]);
     document.querySelectorAll('.mode-opt').forEach(el => el.onclick = () => {
       pick = +el.dataset.i; document.querySelectorAll('.mode-opt').forEach(o => o.classList.toggle('on', o === el)); Sfx.play('tick');
+      $('bossPickWrap').classList.toggle('hidden', !MODES[pick].boss);
     });
+    document.querySelectorAll('#mapPick .pick-opt').forEach(el => el.onclick = () => {
+      map = +el.dataset.i; document.querySelectorAll('#mapPick .pick-opt').forEach(o => o.classList.toggle('on', o === el)); Sfx.play('tick');
+    });
+    wireBossPicker(boss, b => { boss = b; });
+    const on = document.querySelector('#mapPick .pick-opt.on'); if (on) on.scrollIntoView({ block: 'nearest', inline: 'center' });
     if (await p !== 1) return;
-    lastMode = MODES[pick].id; store.set('mode', lastMode);
-    challengeFriend(name, MODES[pick]);
+    lastMode = MODES[pick].id; store.set('mode', lastMode); store.set('map', map); store.set('boss', boss);
+    challengeFriend(name, MODES[pick], map, boss);
   }
-  async function challengeFriend(name, mode) {
+  async function challengeFriend(name, mode, map, boss) {
     let cancelled = false;
-    modal(`<h3>Calling ${esc(name)}...</h3><p>${esc(mode.name)}: waiting for them to accept.</p>`, [{ label: 'Cancel', cls: 'gray' }]).then(() => { cancelled = true; Net.cancelChallenge(); });
-    const extra = { mode: mode.id, arena: Progress.arena() };
+    modal(`<h3>Calling ${esc(name)}...</h3><p>${esc(mode.name)} on ${esc(ARENAS[map].name)}: waiting for them to accept.</p>`, [{ label: 'Cancel', cls: 'gray' }]).then(() => { cancelled = true; Net.cancelChallenge(); });
+    const extra = { mode: mode.id, arena: map, boss: mode.boss ? boss : undefined };
     const r = await Net.challenge(name, deck, extra);
     if (cancelled) return;
     closeModal();
@@ -653,21 +688,29 @@
       const why = { offline: `${name} is offline.`, declined: `${name} said no.`, busy: `${name} is already in a battle.`, timeout: `${name} didn't answer.`, closed: 'Connection lost.' }[r.why] || 'Could not connect.';
       toast(why); return;
     }
-    startOnline('host', name, { deck: r.deck, levels: r.levels, mode: mode.id, arena: Progress.arena() });
+    startOnline('host', name, { deck: r.deck, levels: r.levels, mode: mode.id, arena: map, bosses: [boss, okBoss(r.boss)] });
   }
   Net.on('challenge', async (from, conn, msg) => {
     if (!/^[A-Za-z0-9_]{3,16}$/.test(from)) { Net.decline(conn); return; }
     if (G || modalResolve) { Net.decline(conn, 'busy'); return; }
     const mode = MODES.find(m => m.id === msg.mode) || MODES[0];
     Sfx.play('horn');
-    const k = await modal(`<h3>Battle!</h3><p><b>${esc(from)}</b> wants to battle you!</p><p>Mode: <b style="color:var(--gold)">${esc(mode.name)}</b><br>${esc(mode.desc)}</p>`,
+    const map = okMap(msg.arena);
+    let boss = okBoss(store.get('boss', ARENAS[Progress.arena()].boss));
+    const kp = modal(`<h3>Battle!</h3><p><b>${esc(from)}</b> wants to battle you!</p>
+      <div class="ch-map" style="background-image:url(arenas/${ARENAS[map].id}.webp?v=1)"><span>${esc(ARENAS[map].name)}</span></div>
+      <p>Mode: <b style="color:var(--gold)">${esc(mode.name)}</b><br>${esc(mode.desc)}</p>
+      ${mode.boss ? `<p>Their boss: <b style="color:var(--gold)">${esc(BOSSES[okBoss(msg.boss)].name)}</b></p><div class="pick-label">Pick your boss</div>${bossPickerHtml(boss)}` : ''}`,
       [{ label: 'Decline', cls: 'gray' }, { label: 'Accept', cls: 'green' }]);
+    if (mode.boss) wireBossPicker(boss, b => { boss = b; });
+    const k = await kp;
     if (k !== 1 || !conn.open) { Net.decline(conn); if (k === 1) toast('They left.'); return; }
     Sfx.init();
     addFriend(from, true);
+    if (mode.boss) store.set('boss', boss);
     const lv = {}; deck.forEach(id => lv[id] = Progress.level(id));
-    Net.accept(conn, deck, { levels: lv });
-    startOnline('guest', from, { mode: mode.id, arena: Math.max(0, Math.min(ARENAS.length - 1, msg.arena | 0)) });
+    Net.accept(conn, deck, { levels: lv, boss: mode.boss ? boss : undefined });
+    startOnline('guest', from, { mode: mode.id, arena: map, bosses: [okBoss(msg.boss), boss] });
   });
 
   // ---------------- the match ----------------
@@ -703,10 +746,9 @@
     const mode = MODES.find(m => m.id === info.mode) || MODES[0];
     G = newMatch(role, oppName, info.arena);
     G.modeName = mode.name;
-    if (mode.boss) {   // Boss Battle: both houses become the challenger's arena boss (both phones work it out the same way)
-      const ab = (ARENAS[info.arena | 0] || ARENAS[0]).boss;
-      const bid = ab && BOSSES[ab] ? ab : Object.keys(BOSSES)[0];
-      G.boss = [bid, bid];
+    if (mode.boss) {   // Boss Battle: each player's house becomes the boss they picked ([challenger, friend])
+      const b = info.bosses || [];
+      G.boss = [okBoss(b[0]), okBoss(b[1])];
     }
     Progress.addRecent(oppName);
     if (role === 'host') {
@@ -724,6 +766,7 @@
     enterGame();
   }
   function enterGame() {
+    Net.setFighting(true);
     show('game');
     $('game').classList.remove('aiming');
     $('oppName').textContent = G.oppName;
@@ -797,7 +840,7 @@
     const nextUp = res && res.newArena >= 0;
     const btns = again ? [{ label: 'Home', cls: 'gray' }, { label: nextUp ? 'Next arena!' : 'Play again', cls: 'green' }] : [{ label: 'Home', cls: 'green' }];
     const k = await modal(`<div class="res-title ${won ? 'win' : draw ? 'draw' : 'lose'}">${title}</div>${rows}${sub}${rewards}`, btns);
-    G = null;
+    G = null; Net.setFighting(false);
     if (res && res.newArena >= 0) await arenaUnlocked(res.newArena);
     if (again && k === 1) { if (mode === 'cpu') startCPU(nextUp ? res.newArena : ai); else startPractice(); }
     else show('home');
@@ -1312,6 +1355,16 @@
     const [sx, sy] = w2s(d.x, d.y);
     ctx.save(); ctx.translate(sx, sy - T * 0.55); ctx.scale(T, T);
     const s = p.style;
+    const sp3 = SPR['p_' + s];
+    if (sp3) {
+      // 3D projectile: a soft shadow on the ground under it, then the spinning model up in the air
+      ctx.fillStyle = 'rgba(0,0,0,0.18)'; ctx.beginPath(); ctx.ellipse(0, 0.55, 0.16, 0.07, 0, 0, 7); ctx.fill();
+      if (s === 'bass' || s === 'bullet') { ctx.shadowColor = s === 'bass' ? 'rgba(170,90,255,0.9)' : 'rgba(255,200,60,0.9)'; ctx.shadowBlur = 12; }
+      const k3 = { bass: 1.45, bigpoop: 1.6, box: 1.55, bullet: 1.4, waffle: 1.7, smoke: 1.7 }[s] || 1.9;   // drawn bigger than life so they read on a phone
+      ctx.scale(k3, k3);
+      drawFrame(sp3, 0, Math.floor(now * 16 + (p.id || 0) * 3) % (sp3.frames || 8));
+      ctx.restore(); return;
+    }
     if (s === 'poop' || s === 'bigpoop') { const r = s === 'bigpoop' ? 0.28 : 0.14; circ(ctx, 0, 0, r, '#6b4423'); circ(ctx, -r * 0.3, -r * 0.4, r * 0.45, '#f5f5f5', false); }
     else if (s === 'spit') { circ(ctx, 0, 0, 0.12, '#9ccc3c'); }
     else if (s === 'pizza') { ctx.rotate(now * 10); poly(ctx, [0, -0.2, 0.18, 0.15, -0.18, 0.15], '#f9c74f'); circ(ctx, 0, 0.02, 0.04, '#c0392b', false); }
@@ -1614,7 +1667,7 @@
 
   // ---------------- loading screen: 3D sprites + sounds ----------------
   const SPRITE_VER = 3;
-  const SPRITE_IDS = CARDS.map(c => c.id).concat(['turd', 'king0', 'king1', 'princess0', 'princess1', 'king_ko', 'princess_ko', 'chest_small', 'chest_medium', 'chest_huge', 'meteor_fx', 'boom_fx', 'toot_fx', 'akpig_fx', 'cone_fx', 'roid_fx', 'storm_fx', 'poof_fx', 'cart_fx', 'hotbox_fx'], ...Object.keys(BOSSES).flatMap(b => ['boss_' + b, 'boss_' + b + '_t']));
+  const SPRITE_IDS = CARDS.map(c => c.id).concat(['turd', 'king0', 'king1', 'princess0', 'princess1', 'king_ko', 'princess_ko', 'chest_small', 'chest_medium', 'chest_huge', 'meteor_fx', 'boom_fx', 'toot_fx', 'akpig_fx', 'cone_fx', 'roid_fx', 'storm_fx', 'poof_fx', 'cart_fx', 'hotbox_fx', ...['spit', 'poop', 'bigpoop', 'bomb', 'dynamite', 'pizza', 'smoke', 'bottle', 'bullet', 'drumstick', 'slipper', 'box', 'waffle', 'bass'].map(p => 'p_' + p)], ...Object.keys(BOSSES).flatMap(b => ['boss_' + b, 'boss_' + b + '_t']));
   const SOUND_IDS = ['pop', 'tick', 'nope', 'deploy', 'bonk', 'grunt', 'ptooey', 'splat', 'kick', 'stomp', 'plop', 'boom', 'fart', 'blinker', 'rage',
     'thwump', 'hiss', 'ding', 'bottle', 'waah', 'snipe', 'whack', 'heehaw', 'flush', 'squish', 'squeak', 'clank', 'chomp', 'yap', 'crash', 'horn',
     'whoosh', 'burp', 'slam', 'cap', 'can', 'hit', 'towerDown', 'dynamite', 'win', 'growl', 'toot'];

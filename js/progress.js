@@ -37,7 +37,7 @@ const MODES = [
   { id: 'mirror', name: 'Mirror Match', desc: 'Both of you use the challenger\'s deck.', mirror: true },
   { id: 'speed', name: 'Speed Run', desc: 'Troops move 50% faster. 2-minute match.', opts: { speedMul: 1.5, time: 120 } },
   { id: 'levels', name: 'Real Levels', desc: 'Your card upgrades count. Grind pays off.', levels: true },
-  { id: 'boss', name: 'Boss Battle', desc: "Both houses become the boss of the challenger's arena (Alejandro Leonard until more bosses are in).", boss: true },
+  { id: 'boss', name: 'Boss Battle', desc: 'Both of you pick a boss to stand in for your house. Pick a strong one!', boss: true },
 ];
 
 const MAX_LEVEL = 9;
