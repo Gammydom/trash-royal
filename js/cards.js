@@ -36,7 +36,7 @@ const CARDS = [
   { id: 'toot', name: 'The Toot', cost: 2, kind: 'spell', radius: 2.5, dmg: 160, stun: 0.7, delay: 0, towerMul: 0.35, sfx: 'toot', word: 'PFFFT!',
     desc: 'A nasty fart cloud. Small damage and stuns everything caught in it.' },
   { id: 'blinker', name: 'Blinker Checkpoint', cost: 4, kind: 'spell', radius: 3, dmg: 0, slow: 0.25, dur: 4, delay: 0, sfx: 'blinker',
-    desc: 'Everything caught in the area slows way down for 4 seconds. Troops dropped in after it lands are not slowed.' },
+    desc: 'A big smoke cloud. Everything caught in it slows way down for 4 seconds. Troops dropped in after it lands are not slowed.' },
   { id: 'steroids', name: 'Steroids', cost: 2, kind: 'spell', radius: 3, rage: 1.4, dur: 6, delay: 0, sfx: 'rage', word: 'ROID RAGE!',
     desc: 'Your troops in the area move and attack way faster for a while.' },
   { id: 'pizzacannon', name: 'Pizza Cannon', cost: 3, kind: 'building', hp: 850, dmg: 130, hit: 0.9, range: 5.5, r: 0.8, lifetime: 30,
@@ -111,37 +111,45 @@ const BOSSES = {
     special: { type: 'shockwave', every: 10, radius: 3.3, dmg: 140, stun: 1.0, knock: 2.2, word: 'WAAAH!', sfx: ['waah', 'stomp'], fx: 'dust' },
     desc: 'Throws baby bottles that splash. Every 10 seconds he throws a TANTRUM: troops near him get knocked back and stunned.' },
   // Arena 2 is a step up: tougher, a harder-hitting single-target spit, and a wider banjo blast with a longer stun
-  buck: { id: 'buck', boss: true, name: 'Buck', kind: 'tower', hp: 5400, dmg: 150, hit: 0.85, range: 7, r: 2.0,
+  buck: { id: 'buck', boss: true, name: 'Buck', kind: 'tower', hp: 5100, dmg: 150, hit: 0.85, range: 7, r: 2.0,
     targets: 'both', proj: 'spit', sfx: 'ptooey', hpBar: 4.3, drawDy: 0.8,
     special: { type: 'shockwave', every: 9, radius: 3.8, dmg: 135, stun: 1.4, knock: 2.8, word: 'TWANG!', sfx: ['twang', 'stomp'], fx: 'notes' },
     desc: 'Spits hard and fast. Every 9 seconds he hits a BANJO BLAST: the soundwave knocks back and stuns troops around him.' },
   // Arena 3: splashing pizza and the biggest, longest stun so far (little knock-back - he lands right on you)
-  madcapeel: { id: 'madcapeel', boss: true, name: 'Madcapeel', kind: 'tower', hp: 5900, dmg: 120, hit: 1.15, range: 6.5, r: 2.0,
+  madcapeel: { id: 'madcapeel', boss: true, name: 'Madcapeel', kind: 'tower', hp: 5400, dmg: 120, hit: 1.15, range: 6.5, r: 2.0,
     targets: 'both', proj: 'pizza', splash: 1.0, sfx: 'whoosh', hpBar: 4.1, drawDy: 0.8,
     special: { type: 'shockwave', every: 11, radius: 4.2, dmg: 160, stun: 1.8, knock: 1.0, word: 'BELLY FLOP!', sfx: ['slam', 'boom'], fx: 'dust' },
     desc: 'Throws pizza slices that splash. Every 11 seconds he jumps and BELLY FLOPS: a huge shockwave that stuns troops around him.' },
   // Arena 4: the toughest so far; his cart rush can hit troops anywhere down a whole lane on his side
-  killer: { id: 'killer', boss: true, name: 'Killer20046', kind: 'tower', hp: 6400, dmg: 140, hit: 1.25, range: 6.5, r: 2.0,
+  killer: { id: 'killer', boss: true, name: 'Killer20046', kind: 'tower', hp: 5800, dmg: 140, hit: 1.25, range: 6.5, r: 2.0,
     targets: 'both', proj: 'box', splash: 1.2, sfx: 'whoosh', hpBar: 3.9, drawDy: 0.8,
     special: { type: 'cartrush', every: 10, dmg: 220, stun: 0.6, knock: 1.6, speed: 9, width: 1.3, carts: 4, word: 'CART RUSH!', sfx: ['horn', 'clank'] },
     desc: 'Throws cardboard boxes that splash. Every 10 seconds: CART RUSH - a line of shopping carts rams down the lane with the most of your troops.' },
   // Arena 5: tougher still; his smoke slows whatever it hits and the hotbox cloud grinds down anything that stays near him
-  alain: { id: 'alain', boss: true, name: 'Alain Medina', kind: 'tower', hp: 6900, dmg: 115, hit: 1.2, range: 6.5, r: 2.0,
+  alain: { id: 'alain', boss: true, name: 'Alain Medina', kind: 'tower', hp: 6100, dmg: 115, hit: 1.2, range: 6.5, r: 2.0,
     targets: 'both', proj: 'smoke', splash: 1.3, slowHit: 0.6, slowHitDur: 1.5, sfx: 'hiss', hpBar: 4.3, drawDy: 0.8,
     special: { type: 'hotbox', every: 12, radius: 4.0, dps: 80, slow: 0.5, dur: 4.5, word: 'HOTBOX!', sfx: ['hiss', 'whoosh'] },
     desc: 'Blows smoke from his glass pipe that splashes and slows. Every 12 seconds he HOTBOXES: a giant smoke cloud around him that slows and hurts every troop inside.' },
   // Arena 6: his slam can land anywhere on his half, right on top of your biggest group
-  matthew: { id: 'matthew', boss: true, name: 'Matthew', kind: 'tower', hp: 7400, dmg: 135, hit: 1.2, range: 6.5, r: 2.0,
+  matthew: { id: 'matthew', boss: true, name: 'Matthew', kind: 'tower', hp: 6500, dmg: 135, hit: 1.2, range: 6.5, r: 2.0,
     targets: 'both', proj: 'waffle', splash: 1.2, sfx: 'whoosh', hpBar: 4.2, drawDy: 0.8,
     special: { type: 'flyslam', every: 11, radius: 3.0, dmg: 260, stun: 1.2, knock: 1.0, word: 'SLAM!', sfx: ['whoosh'] },
     desc: 'Throws waffles that splash. Every 11 seconds he flaps up on his tiny wings and SLAMS down on your biggest group of troops on his half.' },
   // Arena 7 - the final boss: toughest of all, with two specials that take turns
-  orville: { id: 'orville', boss: true, name: 'Orville', kind: 'tower', hp: 9600, dmg: 180, hit: 0.95, range: 7, r: 2.2,
+  orville: { id: 'orville', boss: true, name: 'Orville', kind: 'tower', hp: 7000, dmg: 180, hit: 0.95, range: 7, r: 2.2,
     targets: 'both', proj: 'bass', splash: 1.0, sfx: 'thwump', hpBar: 4.3, drawDy: 1.8,
     special: { type: 'multi', every: 9, moves: [
       { type: 'bassdrop', dmg: 140, stun: 0.8, knock: 2.4, word: 'BASS DROP!', sfx: ['boom', 'stomp'] },
       { type: 'stink', radius: 4.5, dps: 90, slow: 0.55, dur: 5, word: 'STINK CLOUD!', sfx: ['fart', 'hiss'] }] },
     desc: 'The final boss. Blasts bass from his speaker. Every 9 seconds he takes turns: a BASS DROP that knocks back every troop on his half, then a STINK CLOUD that hurts and slows.' },
+  // Orville's 2nd phase (Erick): he evolves into Gigachad Orville when you knock him out in Orville's Domain / a Boss Raid.
+  // Only appears in phase 2 (never in the boss pickers). Same health as phase 1; supernatural-strength attacks.
+  orville2: { id: 'orville2', boss: true, phase2Only: true, name: 'Gigachad Orville', kind: 'tower', hp: 7000, dmg: 190, hit: 0.9, range: 7, r: 2.2,
+    targets: 'both', proj: 'punch', splash: 1.1, sfx: 'whack', hpBar: 4.8, drawDy: 1.8,
+    special: { type: 'multi', every: 8, moves: [
+      { type: 'bassdrop', dmg: 170, stun: 1.0, knock: 2.6, word: 'EARTH SHATTER!', sfx: ['boom', 'stomp'], fxc: 'gold' },
+      { type: 'flyslam', radius: 3.2, dmg: 300, stun: 1.2, knock: 1.6, word: 'TITAN LEAP!', sfx: ['whoosh'], fxc: 'gold' }] },
+    desc: 'Orville\'s final form. Throws golden energy punches. Every 8 seconds: EARTH SHATTER knocks back every troop on his half, then TITAN LEAP slams your biggest group.' }
 };
 
 const DEFS = {};

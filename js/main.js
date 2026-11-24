@@ -10,8 +10,13 @@
   Progress.init(store);
   const validDeck = d => Array.isArray(d) && d.length === 8 && new Set(d).size === 8 && d.every(id => DEFS[id] && DEFS[id].cost);
   let username = store.get('name', '');
-  let deck = store.get('deck', null);
-  if (!validDeck(deck) || deck.some(id => !Progress.unlocked().has(id))) deck = DEFAULT_DECK.slice();
+  // 3 saved decks; the picked one (deckSlot) is used for every battle. Old saves move their deck into Deck 1.
+  let decks = store.get('decks', null);
+  if (!Array.isArray(decks) || decks.length !== 3) decks = [store.get('deck', null), null, null];
+  decks = decks.map(d => validDeck(d) && d.every(id => Progress.unlocked().has(id)) ? d.slice() : DEFAULT_DECK.slice());
+  let deckSlot = Math.max(0, Math.min(2, store.get('deckSlot', 0) | 0));
+  let deck = decks[deckSlot];
+  function saveDecks() { decks[deckSlot] = deck; store.set('decks', decks); store.set('deckSlot', deckSlot); store.set('deck', deck); }
   let friends = store.get('friends', []).filter(n => typeof n === 'string');
   let netState = 'off'; // off | wait | on
   const P = () => Progress.get();
@@ -244,11 +249,41 @@
     $('nextArenaHint').textContent = next ? `Beat ${ar.cpu} to unlock ${next.name}!` : 'Final boss! Beat Orville in his own domain.';
     $('cpuHint').textContent = `vs ${ar.cpu} · level ${Progress.cpuLevel(a)}`;
     $('giftBanner').classList.toggle('hidden', !Progress.giftReady());
+    renderQuests();
     const hd = $('homeDeckCards'); hd.innerHTML = '';
     deck.forEach(id => { const c = makeCard(id, { px: 72 }); c.onclick = () => show('deck'); hd.appendChild(c); });
     $('netText').textContent = netState === 'on' ? '\u{1F7E2} Online: friends can find you' : netState === 'wait' ? 'Connecting...' : 'Offline: CPU battles still work';
   }
   $('giftBanner').onclick = () => { Sfx.init(); Sfx.play('tick'); show('shop'); };
+  // home: a one-line quest banner; tapping it opens the quest list
+  function questRowsHtml() {
+    return Progress.quests().map((q, i) => {
+      const pct = Math.round(q.prog / q.goal * 100), ready = !q.claimed && q.prog >= q.goal;
+      return `<div class="hq-row${q.claimed ? ' claimed' : ''}${ready ? ' ready' : ''}">
+        <div class="hq-txt"><b>${esc(q.txt)}</b><div class="hq-bar"><i style="width:${pct}%"></i><span>${q.prog} / ${q.goal}</span></div></div>
+        ${q.claimed ? '<span class="hq-done">\u2714</span>' : `<button class="small-btn ${ready ? 'gold' : 'gray'}" data-i="${i}" ${ready ? '' : 'disabled'}>${COIN} ${q.reward}</button>`}</div>`;
+    }).join('');
+  }
+  function renderQuests() {
+    const box = $('homeQuests'); if (!box) return;
+    const qs = Progress.quests(), done = qs.filter(q => q.prog >= q.goal).length, ready = Progress.questReady();
+    box.classList.toggle('ready', ready);
+    box.innerHTML = `<span class="hb-ico">\u{1F4DC}</span><span class="hb-txt"><b>Daily quests ${done}/3</b>${ready ? 'A reward is ready to claim!' : `New quests in ${Math.ceil(Progress.msToMidnight() / 3600000)}h`}</span><span class="hb-go">\u2192</span>`;
+  }
+  function questsModal() {
+    const p = modal(`<h3>\u{1F4DC} Daily quests</h3><p>New quests in ${Math.ceil(Progress.msToMidnight() / 3600000)}h</p><div class="hq-list" id="hqList"></div>`, [{ label: 'Close', cls: 'gray' }]);
+    const fill = () => {
+      $('hqList').innerHTML = questRowsHtml();
+      $('hqList').querySelectorAll('button[data-i]').forEach(b => b.onclick = () => {
+        const c = Progress.claimQuest(+b.dataset.i); if (!c) return;
+        Sfx.play('win'); toast(`+${c} coins!`); renderStats(); fill();
+      });
+    };
+    fill();
+    p.then(() => { if (screen === 'home') renderHome(); });
+  }
+  $('homeQuests').onclick = () => { Sfx.init(); Sfx.play('tick'); questsModal(); };
+
   $('copyName').onclick = async () => {
     const b = $('copyName');
     try { await navigator.clipboard.writeText(username); b.textContent = 'Copied!'; } catch (e) { b.textContent = 'Hold to copy'; }
@@ -325,13 +360,21 @@
   let swapPick = null;
   function renderDeck() {
     const un = Progress.unlocked();
+    // deck tabs: tap one to make it your battle deck
+    const tabs = $('deckTabs'); tabs.innerHTML = '';
+    decks.forEach((d, i) => {
+      const b = document.createElement('button'); b.className = 'deck-tab' + (i === deckSlot ? ' on' : '');
+      b.innerHTML = `Deck ${i + 1}<small>\u26A1 ${(d.reduce((s, id) => s + DEFS[id].cost, 0) / 8).toFixed(1)}</small>`;
+      b.onclick = () => { if (i === deckSlot) return; deckSlot = i; deck = decks[i]; swapPick = null; saveDecks(); Sfx.play('tick'); renderDeck(); };
+      tabs.appendChild(b);
+    });
     const slots = $('deckSlots'); slots.innerHTML = '';
     deck.forEach((id, i) => {
       const el = makeCard(id, { px: 110, level: true, upgradable: true });
       el.classList.add('in');
       if (swapPick) el.classList.add('swap');
       el.onclick = () => {
-        if (swapPick) { deck[i] = swapPick; swapPick = null; store.set('deck', deck); Sfx.play('pop'); renderDeck(); }
+        if (swapPick) { deck[i] = swapPick; swapPick = null; saveDecks(); Sfx.play('pop'); renderDeck(); }
         else cardInfo(id);
       };
       slots.appendChild(el);
@@ -629,9 +672,34 @@
     if (k === 1) { addFriend(from, true); toast(`${from} is now your friend`); }
   });
 
+  // ---------------- new version check ----------------
+  // the game's version is the ?v= on its own script tag; version.json on the site says what's newest
+  const GAME_VER = +((document.querySelector('script[src*="main.js"]') || {}).src || '').replace(/.*[?&]v=(\d+).*/, '$1') || 0;
+  let newerVer = 0;
+  async function checkVersion() {
+    try {
+      const r = await fetch('version.json?nc=' + Date.now(), { cache: 'no-store' });
+      const v = +((await r.json()) || {}).v || 0;
+      if (v > GAME_VER && v !== newerVer) { newerVer = v; showUpdateBar(); }
+    } catch (e) {}
+  }
+  function showUpdateBar() {
+    let b = $('updateBar');
+    if (!b) { b = document.createElement('button'); b.id = 'updateBar'; document.body.appendChild(b); b.onclick = () => location.reload(); }
+    b.innerHTML = '\u2728 New update! <b>Tap to refresh</b>';
+    b.classList.toggle('in-battle', !!G);
+  }
+  function versionMismatch(name, theirVer) {
+    if (theirVer > GAME_VER) { newerVer = Math.max(newerVer, theirVer); showUpdateBar(); toast(`${name} has a newer version. Refresh to battle them!`); }
+    else toast(`${name} has an older version. Tell them to refresh the page!`);
+  }
+  setInterval(checkVersion, 120000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) checkVersion(); });
+  setTimeout(checkVersion, 4000);
+
   // challenges with a custom mode
   let lastMode = store.get('mode', 'classic');
-  const BOSS_IDS = Object.keys(BOSSES);
+  const BOSS_IDS = Object.keys(BOSSES).filter(id => !BOSSES[id].phase2Only);
   const okBoss = id => (typeof id === 'string' && BOSSES[id]) ? id : BOSS_IDS[0];
   const okMap = i => Math.max(0, Math.min(ARENAS.length - 1, i | 0));
   // draw a boss's first idle frame fitted into a small canvas
@@ -682,11 +750,12 @@
   async function challengeFriend(name, mode, map, boss) {
     let cancelled = false;
     modal(`<h3>Calling ${esc(name)}...</h3><p>${esc(mode.name)} on ${esc(ARENAS[map].name)}: waiting for them to accept.</p>`, [{ label: 'Cancel', cls: 'gray' }]).then(() => { cancelled = true; Net.cancelChallenge(); });
-    const extra = { mode: mode.id, arena: map, boss: mode.boss || mode.raid ? boss : undefined };
+    const extra = { mode: mode.id, arena: map, boss: mode.boss || mode.raid ? boss : undefined, ver: GAME_VER };
     const r = await Net.challenge(name, deck, extra);
     if (cancelled) return;
     closeModal();
     if (!r.ok) {
+      if (r.why === 'version') { versionMismatch(name, r.ver); return; }
       const why = { offline: `${name} is offline.`, declined: `${name} said no.`, busy: `${name} is already in a battle.`, timeout: `${name} didn't answer.`, closed: 'Connection lost.' }[r.why] || 'Could not connect.';
       toast(why); return;
     }
@@ -695,6 +764,7 @@
   Net.on('challenge', async (from, conn, msg) => {
     if (!/^[A-Za-z0-9_]{3,16}$/.test(from)) { Net.decline(conn); return; }
     if (G || modalResolve) { Net.decline(conn, 'busy'); return; }
+    if ((msg.ver | 0) !== GAME_VER) { Net.decline(conn, 'version', { ver: GAME_VER }); versionMismatch(from, msg.ver | 0); return; }
     const mode = MODES.find(m => m.id === msg.mode) || MODES[0];
     Sfx.play('horn');
     const map = okMap(msg.arena);
@@ -736,7 +806,7 @@
     const botLv = {}; botDeck.forEach(id => botLv[id] = lvl);
     G = newMatch('cpu', `${ar.cpu} (Lv ${lvl})`, ai);
     G.boss = [null, ar.boss && BOSSES[ar.boss] ? ar.boss : null];     // the arena's boss stands where their house was
-    G.sim = new Sim([deck, botDeck], { levels: [myLevels(), botLv], towerLevel: [Progress.kingLevel(deck), lvl], boss: G.boss });   // the CPU fills energy exactly like you; harder arenas = better cards, levels and play
+    G.sim = new Sim([deck, botDeck], { levels: [myLevels(), botLv], towerLevel: [Progress.kingLevel(deck), lvl], boss: G.boss, phase2: ar.boss === 'orville' ? 'orville2' : null });   // the CPU fills energy exactly like you; harder arenas = better cards, levels and play
     G.bot = new Bot(G.sim, 1, { react: ar.react, skill: ar.skill, defend: ar.defend, daze: ar.daze });   // early arenas: CPUs that miss your troops and zone out
     enterGame();
   }
@@ -760,7 +830,7 @@
         const dMate = validDeck(info.deck) ? info.deck : DEFAULT_DECK.slice();
         const lvl = Math.min(MAX_LEVEL, ar.level + 1), botDeck = Progress.cpuDeck(ai), botLv = {}; botDeck.forEach(id => botLv[id] = lvl);
         G.sim = new Sim([deck.slice(), botDeck, dMate], { coop: true, boss: G.boss.slice(), levels: [{}, botLv, {}], towerLevel: [1, ar.level],
-          hpMul: [1, 1.5] });   // normal energy for everyone
+          hpMul: [1, 1.5], phase2: bid === 'orville' ? 'orville2' : null });   // normal energy for everyone
         G.bot = new Bot(G.sim, 1, { react: ar.react, skill: Math.max(ar.skill, 0.35) });
       }
       enterGame();
@@ -796,7 +866,8 @@
     bgKey = '';
     buildHand(true);
     resize();
-    $('myCrowns').textContent = ''; $('oppCrowns').textContent = '';
+    $('game').classList.remove('cutting'); $('cutScene').classList.add('hidden');
+    $('myCrowns').textContent = ''; $('oppCrowns').textContent = ''; $('emoteLayer').innerHTML = ''; toggleEmotes(false); emoteCd = 0;
     vsIntro();
     G.introUntil = performance.now() + 1900;
     setTimeout(() => { if (!G || G.over) return; banner(G.modeName && G.modeName !== 'Classic' ? G.modeName.toUpperCase() + '!' : 'FIGHT!', 1300); Sfx.play('fight'); }, 1900);
@@ -821,6 +892,171 @@
     Sfx.play('horn');
     clearTimeout(vsIntro.t); vsIntro.t = setTimeout(() => box.classList.add('hidden'), 2100);
   }
+  // ---------------- Orville's 2nd phase: zoom in, he talks, he EVOLVES ----------------
+  // timeline (seconds): 0-0.8 zoom in | 0.8-6 dialogue types out, more and more intense | 6-9 glowing evolution | 9-10.5 reveal + zoom out
+  const CUT_LINES = [
+    { t: "There's-", cls: 'l1', ms: 75 }, { t: ' n.. no way...', cls: 'l2', ms: 120 },
+    { t: ' I can be', cls: 'l3', ms: 80 }, { t: ' DEFEATED THIS EASILY!!', cls: 'l4', ms: 55 },
+  ];
+  function startCutscene(ev) {
+    if (!G || G.cut) return;
+    G.cut = { t: 0, x: ev.x, y: ev.y, boss: ev.boss || 'orville2', revealed: false, typed: 0, flashed: false };
+    G.sel = -1; clearSel(); toggleEmotes(false);
+    $('emoteLayer').innerHTML = ''; $('game').classList.add('cutting');   // the battle HUD steps aside for the scene
+    const box = $('cutScene');
+    box.innerHTML = '<div class="cut-bar top"></div><div class="cut-bar bot"></div><div class="cut-text" id="cutText"></div><div class="cut-flash" id="cutFlash"></div>';
+    const tx = $('cutText');
+    CUT_LINES.forEach(l => { const s = document.createElement('span'); s.className = 'cut-seg ' + l.cls; tx.appendChild(s); });
+    box.classList.remove('hidden');
+    // type the line out letter by letter, each part a bit wilder than the last
+    let delay = 900;
+    CUT_LINES.forEach((l, li) => {
+      [...l.t].forEach((ch, ci) => {
+        delay += l.ms + (ch === '.' ? 160 : ch === '-' ? 220 : 0);
+        setTimeout(() => {
+          if (!G || !G.cut) return;
+          const seg = tx.children[li]; seg.textContent += ch; seg.classList.add('on');
+          if (ch !== ' ' && ci % 2 === 0) Sfx.play(li === 3 ? 'stomp' : 'tick');
+          if (li === 3) G.shake = Math.max(G.shake, 0.25);
+        }, delay);
+      });
+      delay += 250;
+    });
+    setTimeout(() => { if (G && G.cut) { Sfx.play('rage'); Sfx.play('hiss'); } }, 6000);
+    Sfx.play('towerDown');
+  }
+  function cutCamera(dt) {
+    const c = G.cut; if (!c) return { z: 1, ox: 0, oy: 0 };
+    c.t += dt;
+    const t = c.t;
+    // zoom in fast, hold, zoom back out at the end
+    const zin = Math.min(1, t / 0.8), zout = t > 9.3 ? Math.min(1, (t - 9.3) / 1.0) : 0;
+    const ease = q => q * q * (3 - 2 * q);
+    const z = 1 + 1.25 * ease(zin) * (1 - ease(zout));
+    const [fx, fy] = w2s(c.x, c.y - 2.4);
+    const cx = VW / 2, cy = VH * 0.42;
+    const k = (z - 1) / 1.25;   // slide the focus to the middle of the screen as we zoom
+    const px = fx + (cx - fx) * k, py = fy + (cy - fy) * k;
+    if (t > 6 && !c.dlgOut) { c.dlgOut = true; $('cutText').classList.add('out'); }
+    if (t > 8.85 && !c.flashed) { c.flashed = true; const f = $('cutFlash'); f.classList.add('go'); Sfx.play('boom'); G.shake = Math.max(G.shake, 1); }
+    if (t > 9.0 && !c.revealed) { c.revealed = true; G.boss[1] = c.boss; Sfx.play('horn'); banner('GIGACHAD ORVILLE!', 1500);
+      G.oppName = String(G.oppName).replace('Orville', BOSSES[c.boss].name); $('oppName').textContent = G.oppName; }
+    if (t > 10.5) {
+      G.cut = null; $('cutScene').classList.add('hidden'); $('cutScene').innerHTML = ''; $('game').classList.remove('cutting');
+      banner('PHASE 2!', 1600); toast('No time limit \u00b7 2x energy \u00b7 Take down his main tower!');
+      return { z: 1, ox: 0, oy: 0 };
+    }
+    return { z, ox: px - fx * z, oy: py - fy * z };
+  }
+  // during the cutscene the boss is drawn here: shaking with rage, then flickering white between his two forms
+  function drawCutBoss(now) {
+    const c = G.cut; if (!c || c.revealed) return false;
+    const t = c.t, jig = t > 0.8 ? Math.min(1, (t - 0.8) / 5) : 0;
+    ctx.save();
+    ctx.translate((Math.random() - 0.5) * 0.12 * jig, (Math.random() - 0.5) * 0.06 * jig);
+    if (t < 6) { const sp = SPR.boss_orville; if (sp) drawFrame(sp, 0, Math.floor(now * 10) % sp.walk); ctx.restore(); return true; }
+    // evolution: white silhouettes swapping faster and faster, like a monster evolving
+    const q = (t - 6) / 2.85, rate = 2 + q * q * 22;
+    const second = Math.floor((t - 6) * rate) % 2 === 1;
+    const sp = SPR[second ? 'boss_orville2' : 'boss_orville'];
+    ctx.shadowColor = 'rgba(255,220,90,1)'; ctx.shadowBlur = 30;
+    ctx.filter = 'brightness(0) invert(1)';
+    if (sp) drawFrame(sp, 0, 0);
+    ctx.filter = 'none'; ctx.restore();
+    return true;
+  }
+  // how strong the golden aura is (it flares up during the evolution, then burns steadily)
+  function auraLevel(bossId) {
+    const c = G.cut;
+    if (c && !c.revealed) return Math.min(1.6, 0.3 + (c.t - 6) * 0.45);
+    if (c && c.revealed) return 1.6 - Math.min(0.6, (c.t - 9) * 0.5);
+    return bossId === 'orville2' ? 1 : 0;
+  }
+  // a super power-up aura: golden flames rushing up around him + crackling sparks (front pass draws the sparks)
+  function drawAura(now, lv, front) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    const H = 6.2, W = 2.6, cy = -3.0;   // around his body, in tiles (he's drawn giant)
+    if (!front) {
+      const g = ctx.createRadialGradient(0, cy, 0.3, 0, cy, W * 1.6);
+      g.addColorStop(0, `rgba(255,190,60,${0.42 * lv})`); g.addColorStop(1, 'rgba(255,120,20,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.ellipse(0, cy, W * 1.5, H * 0.62, 0, 0, 7); ctx.fill();
+      for (let i = 0; i < 22; i++) {
+        const a = i / 22 * Math.PI * 2, s = Math.sin(a);
+        const bx = Math.cos(a) * W * (0.9 + 0.12 * Math.sin(now * 9 + i)), by = cy + s * H * 0.45 + 0.6;
+        const h = (1.4 + 1.6 * Math.abs(Math.sin(now * 7 + i * 1.7))) * lv * (1.1 - 0.4 * s);
+        const w = 0.45 + 0.15 * Math.sin(now * 11 + i);
+        const sway = Math.sin(now * 6 + i) * 0.35;
+        const fg = ctx.createLinearGradient(bx, by, bx, by - h);
+        fg.addColorStop(0, `rgba(255,130,20,${0.7 * Math.min(1, lv)})`); fg.addColorStop(0.5, `rgba(255,205,70,${0.5 * Math.min(1, lv)})`); fg.addColorStop(1, 'rgba(255,255,220,0)');
+        ctx.fillStyle = fg;
+        ctx.beginPath(); ctx.moveTo(bx - w, by);
+        ctx.quadraticCurveTo(bx - w * 0.6 + sway, by - h * 0.55, bx + sway * 1.6, by - h);
+        ctx.quadraticCurveTo(bx + w * 0.6 + sway, by - h * 0.55, bx + w, by); ctx.closePath(); ctx.fill();
+      }
+    } else {
+      // crackling sparks around him
+      ctx.strokeStyle = 'rgba(200,240,255,0.95)'; ctx.lineWidth = 0.07; ctx.shadowColor = '#9fe3ff'; ctx.shadowBlur = 8;
+      const n = Math.random() < 0.6 ? 2 + Math.floor(lv * 2) : 0;
+      for (let k = 0; k < n; k++) {
+        let x = (Math.random() - 0.5) * W * 2.2, y = cy + (Math.random() - 0.5) * H * 0.9;
+        ctx.beginPath(); ctx.moveTo(x, y);
+        for (let j = 0; j < 4; j++) { x += (Math.random() - 0.5) * 0.8; y += (Math.random() - 0.5) * 0.8; ctx.lineTo(x, y); }
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  // ---------------- emotes ----------------
+  // a cartoon bubble with a big emoji and a word pops up over a house; friends send them, CPU bosses taunt
+  const EMOTES = [
+    { e: '\u{1F602}', w: 'LOL!', s: 'heehaw' }, { e: '\u{1F62D}', w: 'WAAAH', s: 'waah' }, { e: '\u{1F624}', w: 'BRING IT!', s: 'horn' },
+    { e: '\u{1F44D}', w: 'NICE!', s: 'ding' }, { e: '\u{1F62C}', w: 'OOPS', s: 'squeak' }, { e: '\u{1F91D}', w: 'GG', s: 'pop' },
+    { e: '\u{1F595}', w: 'FUCK YOU', s: 'horn' },   // Erick's
+  ];
+  let muteEmotes = !!store.get('muteEmotes', false), emoteCd = 0;
+  function showEmote(i, who) {
+    const em = EMOTES[i | 0]; if (!em || !G) return;
+    if (who !== 'me' && muteEmotes) return;
+    // where: over your house, below theirs; in a Boss Raid you and your teammate stand side by side
+    const mine = who !== 'them';
+    const x = G.coop && mine ? (who === 'me' ? 11.6 : 6.4) : 9, side = mine ? G.me : 1 - G.me;
+    const wy = side === 0 ? 26.2 : 5.8;
+    const [sx, sy] = w2s(x, wy);
+    const b = document.createElement('div');
+    b.className = 'emote-bubble ' + (who === 'them' ? 'them' : who === 'mate' ? 'mate' : 'me');
+    b.style.left = sx + 'px'; b.style.top = (sy + (mine ? 0 : 0)) + 'px';
+    b.innerHTML = `<span class="eb-emo">${em.e}</span><span class="eb-word"></span>`;
+    b.querySelector('.eb-word').textContent = em.w + (who === 'mate' ? ` (${G.mateName})` : '');
+    $('emoteLayer').appendChild(b);
+    Sfx.play(em.s);
+    setTimeout(() => b.remove(), 2300);
+  }
+  function sendEmote(i) {
+    if (!G || G.over) return;
+    const now = performance.now(); if (now < emoteCd) return;
+    emoteCd = now + 2500;
+    showEmote(i, 'me');
+    if (G.mode === 'host' || G.mode === 'guest') Net.send({ t: 'emote', i });
+    else if (G.bot && Math.random() < 0.35) setTimeout(() => cpuTaunt(Math.random() < 0.5 ? 2 : 0), 900 + Math.random() * 700);   // the CPU sometimes answers back
+    toggleEmotes(false);
+  }
+  // the CPU boss taunts (only where a CPU plays: arena battles, and the challenger's phone in a Boss Raid)
+  function cpuTaunt(i) {
+    if (!G || G.over || !G.bot) return;
+    showEmote(i, 'them');
+    if (G.coop && G.mode === 'host') Net.send({ t: 'emote', i, boss: 1 });
+  }
+  function toggleEmotes(on) {
+    const p = $('emotePanel'); on = on == null ? p.classList.contains('hidden') : on;
+    p.classList.toggle('hidden', !on);
+    if (on) $('emoteMute').textContent = muteEmotes ? '\u{1F507} Their emotes are muted (tap to unmute)' : '\u{1F50A} Mute their emotes';
+  }
+  $('emoteGrid').innerHTML = EMOTES.map((em, i) => `<button data-i="${i}"><span>${em.e}</span>${em.w}</button>`).join('');
+  $('emoteGrid').querySelectorAll('button').forEach(b => b.onclick = e => { e.stopPropagation(); sendEmote(+b.dataset.i); });
+  $('emoteBtn').onclick = e => { e.stopPropagation(); toggleEmotes(); };
+  $('emoteMute').onclick = e => { e.stopPropagation(); muteEmotes = !muteEmotes; store.set('muteEmotes', muteEmotes); if (muteEmotes) $('emoteLayer').querySelectorAll('.them, .mate').forEach(n => n.remove()); toggleEmotes(true); };
   function banner(text, ms = 1500) {
     const b = $('banner'); b.textContent = text; b.classList.add('show');
     clearTimeout(banner._t); banner._t = setTimeout(() => b.classList.remove('show'), ms);
@@ -842,6 +1078,7 @@
     if (!G || G.over) return;
     G.heardAt = performance.now();
     if (msg.t === 'hb') return;
+    if (msg.t === 'emote') { showEmote(msg.i, msg.boss ? 'them' : G.coop ? 'mate' : 'them'); return; }
     if (msg.t === 'bye' || (msg.t === 'quit' && G.coop)) { left(msg.t === 'bye' ? 'left' : 'gave up'); return; }
     if (G.mode === 'host' && msg.t === 'play') {
       const i = msg.i | 0, x = +msg.x, y = +msg.y;
@@ -889,6 +1126,19 @@
       const c = Progress.friendResult(won);
       rewards = `<div class="res-reward"><span class="res-chip">${COIN} +${c}</span></div>`;
     }
+    // daily quests (Practice doesn't count)
+    if (mode !== 'bot') {
+      const qd = [];
+      if (myCr) qd.push(...Progress.questEvent('crowns', myCr));
+      if (won) {
+        qd.push(...Progress.questEvent('win'));
+        if (myCr >= 3) qd.push(...Progress.questEvent('three'));
+        if (mode === 'host' || mode === 'guest') qd.push(...Progress.questEvent('friend'));
+        if (mode === 'cpu') qd.push(...Progress.questEvent('cpu'));
+        deck.forEach(id => qd.push(...Progress.questEvent('withcard', 1, id)));
+      }
+      if (qd.length) rewards += `<div class="res-quest">\u{1F4DC} Quest done: ${qd.map(q => esc(q.txt)).join(', ')}! Claim it on the home screen.</div>`;
+    }
     await new Promise(r => setTimeout(r, 1200));
     const title = won ? 'YOU WIN!' : draw ? 'DRAW!' : 'YOU LOSE';
     // 3 crown slots each: earned ones in colour, missing ones greyed out
@@ -931,8 +1181,11 @@
         if (G.decals.length > 30) G.decals.shift();
         break;
       case 'word': G.fx.push({ k: 'word', w: ev.w, x: ev.x, y: ev.y, t: 0, dur: 0.9 }); break;
+      case 'phase2': startCutscene(ev); break;
       case 'shake': G.shake = Math.max(G.shake, ev.a); break;
-      case 'tower': G.fx.push({ k: 'boom', x: ev.x, y: ev.y, r: 2.5, t: 0, dur: 1.0 }); banner(ev.owner === G.me ? 'TOWER DOWN!' : 'CROWN!', 1200); break;
+      case 'tower': G.fx.push({ k: 'boom', x: ev.x, y: ev.y, r: 2.5, t: 0, dur: 1.0 }); banner(ev.owner === G.me ? 'TOWER DOWN!' : 'CROWN!', 1200);
+        if (G.bot && Math.random() < (ev.owner === G.me ? 0.7 : 0.5)) setTimeout(() => cpuTaunt(ev.owner === G.me ? 0 : 1), 1100);
+        break;
       case 'banner': banner(ev.w, 1800); break;
       case 'end': break;
     }
@@ -947,7 +1200,7 @@
       return v;
     }
     const s = G.sim;
-    return { ents: s.ents, projs: s.projs, zones: s.zones, t: s.t, crowns: s.crowns, elixir: s.elixir[G.slot], hand: s.players[G.slot].hand, next: s.players[G.slot].queue[0], ot: s.ot, regTime: s.regTime,
+    return { phase2: !!s.phase2, ents: s.ents, projs: s.projs, zones: s.zones, t: s.t, crowns: s.crowns, elixir: s.elixir[G.slot], hand: s.players[G.slot].hand, next: s.players[G.slot].queue[0], ot: s.ot, regTime: s.regTime,
       mateHand: G.coop ? s.players[2].hand : undefined };
   }
 
@@ -1137,6 +1390,7 @@
     x = Math.round(x * 2) / 2; y = Math.round(y * 2) / 2;
     if (def.kind !== 'spell') { x = Math.max(0.5, Math.min(ARENA_W - 0.5, x)); }
     if (G.introUntil && performance.now() < G.introUntil) return;   // wait for the VS intro
+    if (G.cut) return;                                                 // Orville is evolving
     if (st.elixir < def.cost) { Sfx.play('nope'); toast('Not enough energy'); return; }
     if (!canPlace(G.me, def.kind, x, y, st.ents)) { Sfx.play('nope'); toast(def.kind === 'spell' ? 'Drop it on the arena' : 'Drop troops on your side'); return; }
     if (G.mode === 'guest') {
@@ -1144,7 +1398,15 @@
       Sfx.play('pop');
       G.fx.push({ k: 'poof', x, y, r: 0.6, t: 0, dur: 0.3 });
     } else {
-      G.sim.play(G.slot, G.sel, x, y);
+      if (!G.sim.play(G.slot, G.sel, x, y)) { clearSel(); return; }
+    }
+    if (G.mode !== 'bot') {
+      const qd = [];
+      if (def.kind === 'spell') qd.push(...Progress.questEvent('spells'));
+      if (def.kind === 'troop') qd.push(...Progress.questEvent('troops'));
+      if (def.cost >= 5) qd.push(...Progress.questEvent('big'));
+      qd.push(...Progress.questEvent('card', 1, id));
+      qd.forEach(q => toast(`\u{1F4DC} Quest done: ${q.txt}!`));
     }
     clearSel();
   }
@@ -1178,6 +1440,11 @@
       }
       if (G.sim.over && !G.over) finish(G.sim.winner);
     }
+    // CPU bosses throw in a random taunt now and then
+    if (G && !G.over && G.bot && !G.cut && !(G.introUntil && performance.now() < G.introUntil)) {
+      G.tauntT = (G.tauntT == null ? 30 : G.tauntT) - dt;
+      if (G.tauntT <= 0) { G.tauntT = 30 + Math.random() * 30; if (Math.random() < 0.4) cpuTaunt([2, 0, 4][Math.floor(Math.random() * 3)]); }
+    }
     // the other player went quiet: host listens for the friend's heartbeat, the friend waits for the game to keep moving
     if (G && !G.over && (G.mode === 'host' || G.mode === 'guest')) {
       const nowMs = performance.now();
@@ -1197,11 +1464,12 @@
     buildHand(false);
     (st.hand || []).forEach((id, i) => slots[i].classList.toggle('poor', DEFS[id] && DEFS[id].cost > el));
     let rem, label = '';
-    if (st.ot) { rem = Math.max(0, (st.regTime || REG_TIME) + OT_TIME - st.t); label = 'SUDDEN DEATH'; }
+    if (st.phase2) { $('timer').innerHTML = '\u221E<small>PHASE 2 \u00b7 x2</small>'; }
+    else if (st.ot) { rem = Math.max(0, (st.regTime || REG_TIME) + OT_TIME - st.t); label = 'SUDDEN DEATH'; }
     else { rem = Math.max(0, (st.regTime || REG_TIME) - st.t); if (st.t > (st.regTime || REG_TIME) - 60) label = 'x2 ENERGY'; }
-    const m = Math.floor(rem / 60), s = Math.floor(rem % 60);
-    $('timer').innerHTML = `${m}:${String(s).padStart(2, '0')}${label ? `<small>${label}</small>` : ''}`;
-    if (!G.dbl && st.t > (st.regTime || REG_TIME) - 60 && !st.ot) { G.dbl = true; banner('DOUBLE ENERGY!', 1500); Sfx.play('overtime'); }
+    if (!st.phase2) { const m = Math.floor(rem / 60), s = Math.floor(rem % 60);
+    $('timer').innerHTML = `${m}:${String(s).padStart(2, '0')}${label ? `<small>${label}</small>` : ''}`; }
+    if (!G.dbl && !st.phase2 && st.t > (st.regTime || REG_TIME) - 60 && !st.ot) { G.dbl = true; banner('DOUBLE ENERGY!', 1500); Sfx.play('overtime'); }
     for (const [id, n] of [['myCrowns', st.crowns[G.me]], ['oppCrowns', st.crowns[1 - G.me]]]) {
       const el = $(id), t = '\u{1F451}' + n;
       if (el.textContent !== t) { const grew = el.textContent && el.textContent !== ''; el.textContent = t; if (grew) { el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); } }
@@ -1213,9 +1481,11 @@
     updateHud(st);
     buildBg();
     const now = performance.now() / 1000;
+    const cam = cutCamera(dt);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+    if (cam.z > 1.001) { ctx.fillStyle = '#000'; ctx.fillRect(0, 0, cv.width, cv.height); ctx.setTransform(cam.z, 0, 0, cam.z, DPR * cam.ox, DPR * cam.oy); }
     ctx.drawImage(bgCache, 0, 0);
-    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.setTransform(DPR * cam.z, 0, 0, DPR * cam.z, DPR * cam.ox, DPR * cam.oy);
     // screen shake
     if (G.shake > 0) { G.shake = Math.max(0, G.shake - dt * 2.5); const a = G.shake * T * 0.3; ctx.translate((Math.random() - 0.5) * a, (Math.random() - 0.5) * a); }
     // river bubbles
@@ -1352,11 +1622,16 @@
       ctx.save(); ctx.scale(1, 0.5); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, 1.9, 0, 7); ctx.fill(); ctx.restore();
       // Matthew is away mid flying-slam: only his shadow stays home
       const away = st && st.zones && st.zones.some(z => z.type === 'flyslam' && z.owner === e.owner && z.t >= 0.3 && z.t <= 1.35);
-      if (away) { /* drawn at the slam spot instead */ }
+      const aura = !away && (bossId === 'orville2' || (G.cut && e.owner === 1 && G.cut.t > 6)) ? auraLevel(bossId) : 0;
+      if (aura) drawAura(now, aura, false);
+      if (G.cut && e.owner === 1 && drawCutBoss(now)) { /* the cutscene draws him */ }
+      else if (away) { /* drawn at the slam spot instead */ }
       else if ((e.flags & 512) && spt) {
         let idx = Math.floor(now * 12) % spt.walk;
-        if (bd.special.type === 'flyslam') {   // taking off (frames 0-2) or landing back home (frames 6-7)
-          const fz = st.zones.find(z => z.type === 'flyslam' && z.owner === e.owner);
+        const fz0 = st.zones.find(z => z.type === 'flyslam' && z.owner === e.owner);
+        if (bossId === 'orville2' && !fz0) idx = 3 + Math.floor(now * 8) % 3;   // EARTH SHATTER: dive, slam, kneel
+        if (bd.special.type === 'flyslam' || fz0) {   // taking off (frames 0-2) or landing back home (frames 6-7)
+          const fz = fz0;
           idx = fz && fz.t > 1.35 ? 6 + Math.floor(now * 6) % 2 : Math.floor(now * 6) % 3;
         }
         drawFrame(spt, back ? 2 : 0, idx);
@@ -1366,10 +1641,11 @@
         const idx = attacking ? Math.min(n - 1, Math.floor((1 - e.atk) * n)) : !(e.flags & 128) ? 0 : Math.floor(now * 6) % n;
         drawFrame(sp, (back ? 2 : 0) + (attacking ? 1 : 0), idx);
       }
+      if (aura) drawAura(now, aura, true);
       if (!(e.flags & 128)) { ctx.fillStyle = '#fff'; ctx.font = 'bold 0.6px sans-serif'; ctx.fillText('z', 1.0, -4.4 - (now % 1) * 0.3); ctx.fillText('Z', 1.4, -5.0 - (now % 1) * 0.3); }
       ctx.restore();
       const top = Math.max(OY + 14, w2s(p.x, p.y)[1] - ((bd.hpBar || 3.6) - dy) * T);
-      hpBar(sx, top, T * 3.2, e.hp / e.maxHp, team, Math.ceil(e.hp));
+      if (!(G.cut && e.owner === 1)) hpBar(sx, top, T * 3.2, e.hp / e.maxHp, team, Math.ceil(e.hp));
       return;
     }
     if (e.kind === 'tower') {
@@ -1532,18 +1808,13 @@
         ctx.beginPath(); ctx.arc(sx, sy, R, 0, 7); ctx.fill(); ctx.stroke();
       } else if (z.type === 'blinker') {
         const left = 1 - z.t / def.dur;
-        ctx.fillStyle = `rgba(140,90,255,${0.25 * left + 0.05})`; ctx.beginPath(); ctx.arc(sx, sy, R, 0, 7); ctx.fill();
-        const on = Math.floor(now * 4) % 2;
-        ctx.strokeStyle = on ? 'rgba(255,60,60,0.9)' : 'rgba(60,110,255,0.9)'; ctx.lineWidth = 4; ctx.setLineDash([10, 8]); ctx.beginPath(); ctx.arc(sx, sy, R, 0, 7); ctx.stroke(); ctx.setLineDash([]);
-        const cs = SPR.cone_fx;
-        // 3D traffic cones around the checkpoint, their light bars flashing red / blue (back ones first so front ones overlap)
-        const cones = [0, 1, 2, 3, 4, 5].map(i => { const a = i / 6 * Math.PI * 2 + 0.26; return { x: sx + Math.cos(a) * R, y: sy + Math.sin(a) * R * 0.9, i }; }).sort((p, q) => p.y - q.y);
-        for (const c of cones) {
-          ctx.save(); ctx.translate(c.x, c.y);
-          if (cs) { ctx.scale(T * 1.2, T * 1.2); drawFrame(cs, 0, (on + c.i) % 2); }
-          else { ctx.scale(T * 0.5, T * 0.5); poly(ctx, [-0.4, 0, 0.4, 0, 0.1, -0.9, -0.1, -0.9], '#ff7f27'); }
-          ctx.restore();
-        }
+        ctx.fillStyle = `rgba(200,195,215,${0.25 * left + 0.05})`; ctx.beginPath(); ctx.arc(sx, sy, R, 0, 7); ctx.fill();
+        // Blinker Checkpoint (Erick): a big billowing smoke cloud that swells in, hangs there, then thins out
+        const hs = SPR.hotbox_fx, fade = Math.min(1, z.t / 0.3, Math.max(0, (def.dur - z.t) / 0.7)), grow = Math.min(1, 0.5 + z.t * 2);
+        ctx.save(); ctx.globalAlpha = 0.8 * fade; ctx.translate(sx, sy); ctx.filter = 'brightness(1.25) saturate(0.4)';
+        if (hs) { const k = T * (def.radius / 3.9) * grow; ctx.scale(k, k); drawFrame(hs, 0, Math.floor(now * 8) % (hs.frames || 8)); }
+        else { ctx.fillStyle = '#e8e6ef'; ctx.beginPath(); ctx.ellipse(0, -T * 0.5, R * grow, R * 0.6 * grow, 0, 0, 7); ctx.fill(); }
+        ctx.restore(); ctx.filter = 'none';
       } else if ((z.type === 'meteor') && z.t < def.delay) {
         const p = z.t / def.delay;
         ctx.fillStyle = `rgba(0,0,0,${0.15 + p * 0.25})`; ctx.beginPath(); ctx.ellipse(sx, sy, R * (0.4 + p * 0.6), R * (0.4 + p * 0.6) * 0.6, 0, 0, 7); ctx.fill();
@@ -1687,7 +1958,15 @@
         const rr = R * (0.25 + p * 0.9);
         ctx.strokeStyle = 'rgba(255,240,200,0.95)'; ctx.lineWidth = T * 0.35 * (1 - p) + 1;
         ctx.beginPath(); ctx.ellipse(sx, sy, rr, rr * 0.55, 0, 0, 7); ctx.stroke();
-        if (f.c === 'bass') {
+        if (f.c === 'gold') {
+          // Gigachad Orville's EARTH SHATTER: golden rings and glowing cracks racing across his half
+          ctx.strokeStyle = 'rgba(255,200,60,0.95)';
+          for (let i = 0; i < 3; i++) { const q = Math.max(0, p - i * 0.1); const r2 = R * (0.15 + q * 0.85); ctx.lineWidth = T * 0.3 * (1 - q) + 1; ctx.beginPath(); ctx.ellipse(sx, sy, r2, r2 * 0.55, 0, 0, 7); ctx.stroke(); }
+          ctx.strokeStyle = 'rgba(255,240,170,0.9)'; ctx.lineWidth = T * 0.12;
+          for (let i = 0; i < 9; i++) { const a = i / 9 * 6.28 + 0.3; let x = sx, y = sy; ctx.beginPath(); ctx.moveTo(x, y);
+            for (let k = 1; k <= 5; k++) { const rr2 = R * Math.min(1, p * 1.6) * k / 5; x = sx + Math.cos(a + Math.sin(k * 2.1 + i) * 0.25) * rr2; y = sy + Math.sin(a + Math.sin(k * 2.1 + i) * 0.25) * rr2 * 0.55; ctx.lineTo(x, y); }
+            ctx.stroke(); }
+        } else if (f.c === 'bass') {
           // Orville's bass drop: purple soundwave rings rolling across his whole half
           ctx.strokeStyle = 'rgba(190,120,255,0.9)';
           for (let i = 0; i < 3; i++) { const q = Math.max(0, p - i * 0.12); const r2 = R * (0.15 + q * 0.85); ctx.lineWidth = T * 0.25 * (1 - q) + 1; ctx.beginPath(); ctx.ellipse(sx, sy, r2, r2 * 0.55, 0, 0, 7); ctx.stroke(); }
@@ -1753,8 +2032,8 @@
 
   // ---------------- loading screen: 3D sprites + sounds ----------------
   const SPRITE_VER = 3;
-  const SPRITE_IDS = CARDS.map(c => c.id).concat(['turd', 'king0', 'king1', 'princess0', 'princess1', 'king_ko', 'princess_ko', 'chest_small', 'chest_medium', 'chest_huge', 'meteor_fx', 'boom_fx', 'toot_fx', 'akpig_fx', 'cone_fx', 'roid_fx', 'storm_fx', 'poof_fx', 'cart_fx', 'hotbox_fx', ...['spit', 'poop', 'bigpoop', 'bomb', 'dynamite', 'pizza', 'smoke', 'bottle', 'bullet', 'drumstick', 'slipper', 'box', 'waffle', 'bass'].map(p => 'p_' + p)], ...Object.keys(BOSSES).flatMap(b => ['boss_' + b, 'boss_' + b + '_t']));
-  const SOUND_IDS = ['pop', 'tick', 'nope', 'deploy', 'bonk', 'grunt', 'ptooey', 'splat', 'kick', 'stomp', 'plop', 'boom', 'fart', 'blinker', 'rage',
+  const SPRITE_IDS = CARDS.map(c => c.id).concat(['turd', 'king0', 'king1', 'princess0', 'princess1', 'king_ko', 'princess_ko', 'chest_small', 'chest_medium', 'chest_huge', 'meteor_fx', 'boom_fx', 'toot_fx', 'akpig_fx', 'roid_fx', 'storm_fx', 'poof_fx', 'cart_fx', 'hotbox_fx', ...['spit', 'poop', 'bigpoop', 'bomb', 'dynamite', 'pizza', 'smoke', 'bottle', 'bullet', 'drumstick', 'slipper', 'box', 'waffle', 'bass', 'punch'].map(p => 'p_' + p)], ...Object.keys(BOSSES).flatMap(b => ['boss_' + b, 'boss_' + b + '_t']));
+  const SOUND_IDS = ['pop', 'tick', 'nope', 'deploy', 'bonk', 'grunt', 'ptooey', 'splat', 'kick', 'stomp', 'plop', 'boom', 'fart', 'rage',
     'thwump', 'hiss', 'ding', 'bottle', 'waah', 'snipe', 'whack', 'heehaw', 'flush', 'squish', 'squeak', 'clank', 'chomp', 'yap', 'crash', 'horn',
     'whoosh', 'burp', 'slam', 'cap', 'can', 'hit', 'towerDown', 'dynamite', 'win', 'growl', 'toot'];
   // bounding box of the visible pixels in the first frame (used to frame card pictures)
@@ -1769,18 +2048,35 @@
       return { x: x0, y: y0, w: x1 - x0 + 1, h: y1 - y0 + 1 };
     } catch (e) { return null; }
   }
-  function loadSprite(id) {
-    return fetch('sprites/' + id + '.json?v=' + SPRITE_VER).then(r => r.ok ? r.json() : null).then(meta => new Promise(res => {
-      if (!meta) { res(); return; }
+  // a 3D picture that fails to load (a phone grabbing ~150 files at once can drop a few) is tried again
+  // up to 3 times; anything still missing keeps being retried in the background (see retryMissingSprites)
+  function loadSpriteOnce(id, attempt) {
+    const bust = attempt ? '&r=' + attempt + '-' + Date.now() : '';
+    return fetch('sprites/' + id + '.json?v=' + SPRITE_VER + bust).then(r => r.ok ? r.json() : null).then(meta => new Promise(res => {
+      if (!meta) { res(false); return; }
       const img = new Image();
       img.onload = () => {
         // houses draw a bit bigger; bosses are rendered at high detail and drawn giant (meta.gscale)
         const extra = id.startsWith('king') ? { ppm: meta.ppm / 1.12 } : meta.gscale ? { ppm: meta.ppm / meta.gscale } : {};
-        SPR[id] = Object.assign(meta, { img, bb: alphaBox(img, meta.frame) }, extra); res();
+        SPR[id] = Object.assign(meta, { img, bb: alphaBox(img, meta.frame) }, extra); res(true);
       };
-      img.onerror = () => res();
-      img.src = 'sprites/' + id + '.webp?v=' + SPRITE_VER;
-    })).catch(() => {});
+      img.onerror = () => res(false);
+      img.src = 'sprites/' + id + '.webp?v=' + SPRITE_VER + bust;
+    })).catch(() => false);
+  }
+  async function loadSprite(id) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (await loadSpriteOnce(id, attempt)) return;
+      await new Promise(r => setTimeout(r, 500 * (attempt + 1)));
+    }
+  }
+  let spriteRetries = 0;
+  async function retryMissingSprites() {
+    const missing = SPRITE_IDS.filter(id => !SPR[id]);
+    if (!missing.length || ++spriteRetries > 20) return;
+    for (const id of missing) await loadSpriteOnce(id, 10 + spriteRetries);
+    if (missing.some(id => !SPR[id])) setTimeout(retryMissingSprites, 15000);
+    else bgKey = '';   // pictures arrived: redraw anything cached
   }
   function drawLoadArt(t) {
     const cvs = $('loadArt'), c = cvs.getContext('2d');
@@ -1828,6 +2124,7 @@
       ...SOUND_IDS.map(n => fetch(n === 'toot' ? 'sfx/toot.mp3?v=1' : 'sfx/' + n + '.wav?v=1').then(r => r.arrayBuffer()).catch(() => {}).then(tick)),
       (document.fonts ? document.fonts.ready : Promise.resolve()).then(tick),
     ]);
+    setTimeout(retryMissingSprites, 3000);
     // 3D arena pictures load in the background (your current arena first)
     (async () => { const cur = Progress.arena(); await loadArena3D(cur); for (let i = 0; i < ARENAS.length; i++) await loadArena3D(i); })();
     $('loadText').textContent = 'Ready!';

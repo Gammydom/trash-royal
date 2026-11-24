@@ -2,6 +2,7 @@
 // Player 0 is at the bottom (big y), player 1 at the top.
 
 const REG_TIME = 180, OT_TIME = 60, DEPLOY_T = 1.0;
+const PHASE2_CUT = 10.5;   // seconds the battle stands still while Orville evolves (the cutscene)
 
 function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
 function d2(a, b) { const dx = a.x - b.x, dy = a.y - b.y; return dx * dx + dy * dy; }
@@ -63,7 +64,7 @@ class Sim {
         // ground troops get knocked back but not into the river
         if (!t.air) t.y = e.owner === 1 ? Math.min(t.y, RIVER_TOP - 0.4) : Math.max(t.y, RIVER_BOT + 0.4);
       }
-      this.ev({ e: 'fx', k: 'shock', x: e.x, y: e.y, r: 9, c: 'bass' });
+      this.ev({ e: 'fx', k: 'shock', x: e.x, y: e.y, r: 9, c: sp.fxc || 'bass' });
       for (let i = 0; i < 6; i++) { const a = i / 6 * Math.PI * 2; this.ev({ e: 'fx', k: 'crack', x: e.x + Math.cos(a) * 2.6, y: e.y + Math.sin(a) * 2.6 }); }
       (sp.sfx || []).forEach(n => this.ev({ e: 'sfx', n }));
       this.ev({ e: 'shake', a: 0.75 });
@@ -149,7 +150,7 @@ class Sim {
 
   // ---------- playing cards ----------
   play(slot, handIdx, x, y) {
-    if (this.over) return false;
+    if (this.over || this.freeze > 0) return false;
     const owner = slot === 2 ? 0 : slot;   // slot 2 = the Boss Raid teammate, playing for side 0
     const p = this.players[slot];
     if (!p) return false;
@@ -214,7 +215,7 @@ class Sim {
             t.stun = Math.max(t.stun, sp.stun); t.rampT = 0; t.charging = false; t.moved = 0; t.locked = false;
             if (d > 0.05) { t.x += dx / d * sp.knock; t.y += dy / d * sp.knock; }
           }
-          this.ev({ e: 'fx', k: 'shock', x: z.x, y: z.y, r: sp.radius, c: 'dust' });
+          this.ev({ e: 'fx', k: 'shock', x: z.x, y: z.y, r: sp.radius, c: sp.fxc || 'dust' });
           this.ev({ e: 'sfx', n: 'slam' }); this.ev({ e: 'sfx', n: 'boom' }); this.ev({ e: 'shake', a: 0.6 });
           this.ev({ e: 'word', w: sp.word, x: z.x, y: z.y - 1 });
         }
@@ -563,6 +564,7 @@ class Sim {
     for (const e of dead) {
       const def = e.def;
       if (e.kind === 'tower') {
+        if (e.type === 'king' && e.owner === 1 && this.o.phase2 && !this.phase2) { this.startPhase2(e); continue; }
         const winner = 1 - e.owner;
         this.ev({ e: 'tower', owner: e.owner, x: e.x, y: e.y, king: e.type === 'king' });
         this.ev({ e: 'sfx', n: 'towerDown' }); this.ev({ e: 'shake', a: 0.8 });
@@ -585,6 +587,21 @@ class Sim {
       }
     }
   }
+  // Orville's 2nd phase: instead of losing, he evolves. His side comes back at full health, every troop on the field
+  // is cleared, your towers keep their damage; then no time limit, 2x energy for both sides, first main tower down loses.
+  startPhase2(e) {
+    this.phase2 = true;
+    this.freeze = PHASE2_CUT;
+    this.ents = this.ents.filter(x => (x.kind === 'tower' || x.kind === 'decor') && x.owner !== 1);
+    this.projs = []; this.zones = [];
+    this.o.boss = [this.o.boss[0], this.o.phase2];
+    this.tower('princess', 1, 3.5, 6.5); this.tower('princess', 1, 14.5, 6.5); this.tower('king', 1, 9, 3);
+    for (const k of this.ents) if (k.owner === 1 && k.type === 'king') k.active = true;
+    this.regTime = Infinity; this.ot = false;
+    this.o.elixirMul = this.elixir.map((_, i) => (this.o.elixirMul[i] || 1) * 2);
+    this.ev({ e: 'phase2', x: e.x, y: e.y, boss: this.o.phase2 });
+    this.ev({ e: 'shake', a: 0.6 });
+  }
   end(winner) {
     if (this.over) return;
     this.over = true; this.winner = winner;
@@ -593,6 +610,7 @@ class Sim {
 
   step(dt) {
     if (this.over) return;
+    if (this.freeze > 0) { this.freeze -= dt; return; }   // phase 2 cutscene: nothing moves
     this.t += dt;
     const dbl = this.t > this.regTime - 60;
     for (let i = 0; i < this.elixir.length; i++) this.elixir[i] = Math.min(10, this.elixir[i] + dt / (dbl ? 1.4 : 2.8) * (this.o.elixirMul[i] || 1));
@@ -622,7 +640,7 @@ class Sim {
     const p = this.players[forOwner], mate = this.o.coop ? this.players[forOwner === 2 ? 0 : 2] : null;
     return {
       t: Math.round(this.t * 100), el: Math.round(this.elixir[forOwner] * 100), cr: this.crowns, ot: this.ot ? 1 : 0, rt: this.regTime,
-      hand: p.hand, next: p.queue[0], mh: mate ? mate.hand : undefined,
+      hand: p.hand, next: p.queue[0], mh: mate ? mate.hand : undefined, p2: this.phase2 ? 1 : 0,
       en: this.ents.map(e => [e.id, e.type === 'rubble' ? -1 : e.type === 'rubble_king' ? -2 : TYPE_IDX[e.type], e.owner, r(e.x), r(e.y), Math.ceil(e.hp), e.flags, e.dir, Math.round(e.atk * 10), e.tid || 0, Math.round((e.hop || 0) * 10), Math.ceil(e.maxHp), e.pl === 2 ? 1 : 0]),
       pr: this.projs.map(q => [q.id, q.style, r(q.x), r(q.y), q.owner]),
       zo: this.zones.map(z => [z.id, z.type, r(z.x), r(z.y), Math.round(z.t * 100), z.owner]),
@@ -635,7 +653,7 @@ class Sim {
 function unpackSnapshot(s) {
   const f = v => v / 20;
   return {
-    t: s.t / 100, elixir: s.el / 100, crowns: s.cr, ot: !!s.ot, hand: s.hand, next: s.next, mateHand: s.mh, over: !!s.over, winner: s.win, regTime: s.rt || REG_TIME,
+    t: s.t / 100, elixir: s.el / 100, crowns: s.cr, ot: !!s.ot, hand: s.hand, next: s.next, mateHand: s.mh, phase2: !!s.p2, over: !!s.over, winner: s.win, regTime: s.rt || REG_TIME,
     ents: s.en.map(a => {
       const type = a[1] === -1 ? 'rubble' : a[1] === -2 ? 'rubble_king' : TYPE_LIST[a[1]];
       const def = DEFS[type] || { kind: 'decor', r: 0 };

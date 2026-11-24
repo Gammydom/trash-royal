@@ -80,7 +80,7 @@ const Sfx = (() => {
     fart() { wobble('sawtooth', 75, 0.7, 0.45, 23, 30, 420); noise(0.6, 0.12, 'lowpass', 300, 120); },
     twang() { [196, 247, 294, 392].forEach((f, i) => { osc('sawtooth', f, f * 0.995, 0.55, 0.11, i * 0.035); osc('triangle', f * 2, f * 2, 0.3, 0.06, i * 0.035); }); },   // Buck's banjo
     toot() { lib.fart(); },   // backup if toot.mp3 can't load
-    blinker() { osc('sine', 300, 120, 0.9, 0.3); for (let i = 0; i < 3; i++) osc('square', 880, 880, 0.08, 0.08, i * 0.25); },
+    blinker() { noise(0.1, 0.32, 'highpass', 3200, 3600, 0.7, 0); noise(0.1, 0.32, 'highpass', 3200, 3600, 0.7, 0.17); noise(0.85, 0.36, 'bandpass', 3800, 5200, 0.6, 0.38, undefined, 0.04); noise(0.85, 0.12, 'lowpass', 1500, 900, 0.7, 0.38, undefined, 0.06); },   // smoke spray: psst psst psssshhh
     rage() { osc('sawtooth', 120, 600, 0.5, 0.25); osc('square', 240, 1200, 0.5, 0.1); },
     thwump() { osc('sine', 200, 60, 0.15, 0.5); noise(0.08, 0.2, 'lowpass', 900, 200); },
     hiss() { noise(0.4, 0.2, 'highpass', 2500, 5000); },
@@ -117,7 +117,7 @@ const Sfx = (() => {
   };
 
   // ---- real CC0 sound clips (sfx/*.wav). If one fails to load, the code-made sound plays instead.
-  const SAMPLES = ['pop', 'tick', 'nope', 'deploy', 'bonk', 'grunt', 'ptooey', 'splat', 'kick', 'stomp', 'plop', 'boom', 'fart', 'blinker', 'rage',
+  const SAMPLES = ['pop', 'tick', 'nope', 'deploy', 'bonk', 'grunt', 'ptooey', 'splat', 'kick', 'stomp', 'plop', 'boom', 'fart', 'rage',
     'thwump', 'hiss', 'ding', 'bottle', 'waah', 'snipe', 'whack', 'heehaw', 'flush', 'squish', 'squeak', 'clank', 'chomp', 'yap', 'crash', 'horn',
     'whoosh', 'burp', 'slam', 'cap', 'can', 'hit', 'towerDown', 'dynamite', 'win', 'growl', 'toot'];
   const VOLS = { cap: 0.5, can: 0.6, hit: 0.5, stomp: 0.8, blinker: 0.8, fart: 1.0, win: 0.8, tick: 0.6, flush: 0.8, toot: 0.85 };

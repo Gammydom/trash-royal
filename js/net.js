@@ -104,6 +104,7 @@ const Net = (() => {
         if (m.t === 'accept') { matchConn = conn; fin({ ok: true, conn, deck: m.deck, levels: m.levels, boss: m.boss }); }
         if (m.t === 'decline') { fin({ ok: false, why: 'declined' }); setTimeout(() => conn.close(), 300); }
         if (m.t === 'busy') { fin({ ok: false, why: 'busy' }); }
+        if (m.t === 'version') { fin({ ok: false, why: 'version', ver: m.ver }); setTimeout(() => conn.close(), 300); }
       });
       conn.on('close', () => fin({ ok: false, why: 'closed' }));
       conn.send(Object.assign({ t: 'challenge', from: myName, deck }, extra));
@@ -113,7 +114,7 @@ const Net = (() => {
   }
   function cancelChallenge() { if (Net._pending) { try { Net._pending.close(); } catch (e) {} Net._pending = null; } }
   function accept(conn, deck, extra = {}) { matchConn = conn; conn.send(Object.assign({ t: 'accept', from: myName, deck }, extra)); }
-  function decline(conn, why = 'decline') { try { conn.send({ t: why, from: myName }); setTimeout(() => conn.close(), 400); } catch (e) {} }
+  function decline(conn, why = 'decline', extra = {}) { try { conn.send(Object.assign({ t: why, from: myName }, extra)); setTimeout(() => conn.close(), 400); } catch (e) {} }
   function send(msg) { if (matchConn && matchConn.open) { try { matchConn.send(msg); } catch (e) {} } }
   function leaveMatch() { if (matchConn) { const c = matchConn; matchConn = null; try { c.send({ t: 'quit' }); } catch (e) {} setTimeout(() => { try { c.close(); } catch (e) {} }, 300); } }
 

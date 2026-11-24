@@ -141,6 +141,53 @@ const Progress = (() => {
   function earlyPrice(id) { return 250 * (unlockArenaOf(id) + 1); }
   function buyEarly(id) { const p = earlyPrice(id); if (S.coins < p || unlocked().has(id)) return false; S.coins -= p; S.bought.push(id); save(); return true; }
   // ms until the daily gift + deals reset (they go by the UTC date)
+  // ---- daily quests: 3 a day, new ones at local midnight, 100-250 coins each ----
+  const QUEST_POOL = [
+    { k: 'win', goal: 2, reward: 150, txt: 'Win 2 battles' },
+    { k: 'win', goal: 3, reward: 200, txt: 'Win 3 battles' },
+    { k: 'crowns', goal: 6, reward: 150, txt: 'Take 6 crowns' },
+    { k: 'three', goal: 1, reward: 250, txt: 'Get a 3-crown win' },
+    { k: 'friend', goal: 1, reward: 250, txt: 'Win a friend battle or a Boss Raid' },
+    { k: 'cpu', goal: 2, reward: 150, txt: 'Beat 2 arena bosses' },
+    { k: 'spells', goal: 8, reward: 120, txt: 'Cast 8 spells' },
+    { k: 'troops', goal: 20, reward: 100, txt: 'Play 20 troop cards' },
+    { k: 'big', goal: 5, reward: 120, txt: 'Play 5 cards that cost 5 or more' },
+    { k: 'card', goal: 6, reward: 150, txt: 'Play {card} 6 times', card: true },
+    { k: 'withcard', goal: 1, reward: 200, txt: 'Win with {card} in your deck', card: true },
+  ];
+  const localDay = () => { const d = new Date(); return d.getFullYear() + '-' + (d.getMonth() + 1) + '-' + d.getDate(); };
+  function quests() {
+    const day = localDay();
+    if (!S.quests || S.quests.day !== day) {
+      // same 3 quests all day (seeded by the date), never two of the same kind
+      let seed = 0; for (const ch of day) seed = (seed * 31 + ch.charCodeAt(0)) >>> 0;
+      const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; };
+      const pool = QUEST_POOL.slice(), list = [], kinds = new Set(), owned = [...unlocked()];
+      while (list.length < 3 && pool.length) {
+        const q = pool.splice(Math.floor(rnd() * pool.length), 1)[0];
+        if (kinds.has(q.k)) continue;
+        kinds.add(q.k);
+        const card = q.card ? owned[Math.floor(rnd() * owned.length)] : null;
+        list.push({ k: q.k, goal: q.goal, reward: q.reward, txt: q.txt.replace('{card}', card ? DEFS[card].name : ''), card, prog: 0, claimed: false });
+      }
+      S.quests = { day, list }; save();
+    }
+    return S.quests.list;
+  }
+  // something happened in a battle: bump matching quests, return the ones that just finished
+  function questEvent(k, n = 1, card = null) {
+    const done = [];
+    for (const q of quests()) {
+      if (q.k !== k || q.prog >= q.goal || (q.card && q.card !== card)) continue;
+      q.prog = Math.min(q.goal, q.prog + n);
+      if (q.prog >= q.goal) done.push(q);
+    }
+    save();
+    return done;
+  }
+  function claimQuest(i) { const q = quests()[i]; if (!q || q.claimed || q.prog < q.goal) return 0; q.claimed = true; S.coins += q.reward; save(); return q.reward; }
+  const questReady = () => quests().some(q => !q.claimed && q.prog >= q.goal);
+  function msToMidnight() { const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate() + 1) - n; }
   function msToReset() { const n = new Date(); return Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate() + 1) - n.getTime(); }
   // chests (Erick's numbers): every card is one you own and gets +1 level, then bonus coins pop out
   const CHESTS = [
@@ -166,5 +213,5 @@ const Progress = (() => {
     return { cards, coins };
   }
   return { init, save, get: () => S, arena, bestArena, unlocked, unlockArenaOf, level, levels, upgradeCost, upgrade, kingLevel,
-    cpuLevel, cpuDeck, cpuResult, friendResult, raidResult, addRecent, giftReady, claimGift, deals, boughtDeal, buyDeal, earlyPrice, buyEarly, msToReset, CHESTS, buyChest };
+    cpuLevel, cpuDeck, cpuResult, friendResult, raidResult, addRecent, quests, questEvent, claimQuest, questReady, msToMidnight, giftReady, claimGift, deals, boughtDeal, buyDeal, earlyPrice, buyEarly, msToReset, CHESTS, buyChest };
 })();
