@@ -736,14 +736,14 @@
     const botLv = {}; botDeck.forEach(id => botLv[id] = lvl);
     G = newMatch('cpu', `${ar.cpu} (Lv ${lvl})`, ai);
     G.boss = [null, ar.boss && BOSSES[ar.boss] ? ar.boss : null];     // the arena's boss stands where their house was
-    G.sim = new Sim([deck, botDeck], { levels: [myLevels(), botLv], towerLevel: [Progress.kingLevel(deck), lvl], elixirMul: [1, ar.elixir], boss: G.boss });
+    G.sim = new Sim([deck, botDeck], { levels: [myLevels(), botLv], towerLevel: [Progress.kingLevel(deck), lvl], boss: G.boss });   // the CPU fills energy exactly like you; harder arenas = better cards, levels and play
     G.bot = new Bot(G.sim, 1, { react: ar.react, skill: ar.skill });
     enterGame();
   }
   function startPractice() {
     const botDeck = shuffle([...Progress.unlocked()]).slice(0, 8);
     G = newMatch('bot', 'Practice Dummy', Progress.arena());
-    G.sim = new Sim([deck, botDeck], { elixirMul: [1, 0.8] });
+    G.sim = new Sim([deck, botDeck], {});
     G.bot = new Bot(G.sim, 1, { react: [2.2, 3.4], skill: 0.1 });
     enterGame();
   }
@@ -760,7 +760,7 @@
         const dMate = validDeck(info.deck) ? info.deck : DEFAULT_DECK.slice();
         const lvl = Math.min(MAX_LEVEL, ar.level + 1), botDeck = Progress.cpuDeck(ai), botLv = {}; botDeck.forEach(id => botLv[id] = lvl);
         G.sim = new Sim([deck.slice(), botDeck, dMate], { coop: true, boss: G.boss.slice(), levels: [{}, botLv, {}], towerLevel: [1, ar.level],
-          elixirMul: [1, ar.elixir * 1.8, 1], hpMul: [1, 1.5] });
+          hpMul: [1, 1.5] });   // normal energy for everyone
         G.bot = new Bot(G.sim, 1, { react: ar.react, skill: Math.max(ar.skill, 0.35) });
       }
       enterGame();

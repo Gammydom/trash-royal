@@ -546,9 +546,12 @@ class Sim {
       if (e.kind !== 'unit') continue;
       e.x = Math.max(0.3, Math.min(ARENA_W - 0.3, e.x));
       e.y = Math.max(0.3, Math.min(ARENA_H - 0.3, e.y));
-      if (!e.air && !e.def.jump && e.y > RIVER_TOP && e.y < RIVER_BOT) {
+      // no ground troop is ever in the water: on a bridge it stays on the planks,
+      // anywhere else (knocked in by a boss) it gets shoved back onto the nearest bank
+      if (!e.air && !e.def.jump && e.y > RIVER_TOP - 0.2 && e.y < RIVER_BOT + 0.2) {
         let b = BRIDGES[0]; for (const bx of BRIDGES) if (Math.abs(e.x - bx) < Math.abs(e.x - b)) b = bx;
-        e.x = Math.max(b - 0.85, Math.min(b + 0.85, e.x));
+        if (Math.abs(e.x - b) <= 1.1) e.x = Math.max(b - 0.85, Math.min(b + 0.85, e.x));
+        else e.y = e.y < (RIVER_TOP + RIVER_BOT) / 2 ? RIVER_TOP - 0.25 : RIVER_BOT + 0.25;
       }
     }
   }
