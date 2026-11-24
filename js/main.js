@@ -722,7 +722,8 @@
 
   function newMatch(mode, oppName, arena) {
     return { mode, oppName, arena: arena || 0, me: mode === 'guest' ? 1 : 0, sim: null, bot: null, view: null, acc: 0, snapT: 0, netEv: [],
-      fx: [], decals: [], shake: 0, disp: {}, anim: {}, sel: -1, drag: null, over: false, dbl: false, started: performance.now(), lastSnapAt: 0, boss: [null, null] };
+      fx: [], decals: [], shake: 0, disp: {}, anim: {}, sel: -1, drag: null, over: false, dbl: false, started: performance.now(), lastSnapAt: 0, boss: [null, null],
+      heardAt: performance.now(), hbTimer: 0 };
   }
   function myLevels() { const o = {}; deck.forEach(id => o[id] = Progress.level(id)); return o; }
   function startCPU(ai) {
@@ -767,6 +768,8 @@
   }
   function enterGame() {
     Net.setFighting(true);
+    // online: a heartbeat every second (timers keep running when the tab is in the background, so only a real leave goes quiet)
+    if (G.mode === 'host' || G.mode === 'guest') { G.heardAt = performance.now(); G.hbTimer = setInterval(() => Net.send({ t: 'hb' }), 1000); }
     show('game');
     $('game').classList.remove('aiming');
     $('oppName').textContent = G.oppName;
@@ -790,8 +793,15 @@
     finish(G.me === 0 ? 1 : 0, 'You gave up.');
   };
 
+  // someone closing the game mid-battle: a goodbye message when the page goes away, plus a heartbeat timeout
+  // (closing a tab doesn't always close the connection, so silence counts as leaving too)
+  const LEFT_AFTER = 12000;
+  window.addEventListener('pagehide', () => { if (G && !G.over && (G.mode === 'host' || G.mode === 'guest')) Net.send({ t: 'bye' }); });
   Net.on('match', msg => {
     if (!G || G.over) return;
+    G.heardAt = performance.now();
+    if (msg.t === 'hb') return;
+    if (msg.t === 'bye') { finish(G.me, `${G.oppName} left the battle.`); return; }
     if (G.mode === 'host' && msg.t === 'play') {
       const i = msg.i | 0, x = +msg.x, y = +msg.y;
       if (i >= 0 && i < 4 && isFinite(x) && isFinite(y)) G.sim.play(1, i, x, y);
@@ -811,6 +821,7 @@
   async function finish(winner, note) {
     if (!G || G.over) return;
     G.over = true;
+    clearInterval(G.hbTimer);
     Sfx.beatTick(false);
     const st = viewState();
     const myCr = st.crowns[G.me], opCr = st.crowns[1 - G.me];
@@ -1101,6 +1112,12 @@
         }
       }
       if (G.sim.over && !G.over) finish(G.sim.winner);
+    }
+    // the other player went quiet: host listens for the friend's heartbeat, the friend waits for the game to keep moving
+    if (G && !G.over && (G.mode === 'host' || G.mode === 'guest')) {
+      const nowMs = performance.now();
+      if (G.mode === 'host' && nowMs - G.heardAt > LEFT_AFTER) finish(G.me, `${G.oppName} left the battle.`);
+      else if (G.mode === 'guest' && nowMs - Math.max(G.lastSnapAt, G.started) > LEFT_AFTER + 8000) finish(G.me, `Lost ${G.oppName}. They left the battle.`);
     }
     if (!G) return;
     render(dt);
