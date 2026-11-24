@@ -737,7 +737,7 @@
     G = newMatch('cpu', `${ar.cpu} (Lv ${lvl})`, ai);
     G.boss = [null, ar.boss && BOSSES[ar.boss] ? ar.boss : null];     // the arena's boss stands where their house was
     G.sim = new Sim([deck, botDeck], { levels: [myLevels(), botLv], towerLevel: [Progress.kingLevel(deck), lvl], boss: G.boss });   // the CPU fills energy exactly like you; harder arenas = better cards, levels and play
-    G.bot = new Bot(G.sim, 1, { react: ar.react, skill: ar.skill });
+    G.bot = new Bot(G.sim, 1, { react: ar.react, skill: ar.skill, defend: ar.defend, daze: ar.daze });   // early arenas: CPUs that miss your troops and zone out
     enterGame();
   }
   function startPractice() {

@@ -6,6 +6,10 @@ class Bot {
     if (Array.isArray(opt)) opt = { react: opt };
     this.react = opt.react || [0.5, 1.3];
     this.skill = opt.skill == null ? 1 : opt.skill;
+    // how often it reacts to your troops at all (easy CPUs often just don't notice them)
+    this.defend = opt.defend == null ? 0.35 + 0.65 * this.skill : opt.defend;
+    // easy CPUs sometimes zone out after a play and sit there while their energy bar fills up and goes to waste
+    this.daze = opt.daze || 0;
     this.sim = sim; this.me = owner; this.wait = 2.5 + (1 - this.skill) * 2; this.pushLane = Math.random() < 0.5 ? 3.5 : 14.5;
     this.saveFor = 4 + Math.random() * 4;   // easy CPUs play as soon as they have this much energy
   }
@@ -25,7 +29,7 @@ class Bot {
     const clampX = x => Math.max(1, Math.min(17, x));
 
     // how often it reacts to your troops at all: 35% in the Backyard up to always in Florida
-    if (threats.length && Math.random() < 0.35 + 0.65 * sk) {
+    if (threats.length && Math.random() < this.defend) {
       // spell a clump (only the smarter CPUs)
       if (sk >= 0.35) {
         for (const c of afford) {
@@ -97,5 +101,6 @@ class Bot {
   cast(c, x, y) {
     const ok = this.sim.play(this.me, c.i, x, y);
     if (!ok) this.wait = 0.3;
+    else if (Math.random() < this.daze) this.wait += 5 + Math.random() * 4;
   }
 }

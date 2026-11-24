@@ -5,13 +5,13 @@ const STARTER = ['jshock', 'hillbilly', 'orville', 'pigeons', 'meteor', 'toot', 
 // Each arena: beat its CPU once to unlock the next arena (and its cards). skill 0-1 = how smart the CPU plays;
 // react = seconds between its moves, elixir = its energy speed, level = its card + tower level.
 const ARENAS = [
-  { id: 'backyard', name: 'Backyard', skill: 0, cpu: 'Alejandro Leonard', boss: 'alejandro', level: 1, react: [2.6, 4.0],
+  { id: 'backyard', name: 'Backyard', skill: 0, cpu: 'Alejandro Leonard', boss: 'alejandro', level: 1, react: [3.0, 4.6], defend: 0.15, daze: 0.5,
     ground: ['#7cc35a', '#73b952'], path: 'rgba(196,160,100,0.55)', river: ['#3fa7e0', '#6ccaf4', '#1f78ad'], riverName: 'kiddie pool',
     bridge: '#b07a45', decor: ['bush', 'flower', 'gnome', 'ball'], unlocks: [] },
-  { id: 'trailer', name: 'Trailer Park', skill: 0.2, cpu: 'Buck', boss: 'buck', level: 1, react: [2.0, 3.2],
+  { id: 'trailer', name: 'Trailer Park', skill: 0.1, cpu: 'Buck', boss: 'buck', level: 1, react: [2.4, 3.8], defend: 0.28, daze: 0.35,
     ground: ['#b9a27a', '#b19971'], path: 'rgba(120,96,64,0.45)', river: ['#7a6440', '#93794d', '#574629'], riverName: 'mud creek',
     bridge: '#8e6232', decor: ['tire', 'can', 'flamingo', 'grill'], unlocks: ['bomber', 'uncle', 'chihuahua'] },
-  { id: 'yard', name: "Madcapeel's House", skill: 0.35, cpu: 'Madcapeel', boss: 'madcapeel', level: 2, react: [1.6, 2.6],
+  { id: 'yard', name: "Madcapeel's House", skill: 0.25, cpu: 'Madcapeel', boss: 'madcapeel', level: 2, react: [1.8, 3.0], defend: 0.45, daze: 0.2,
     ground: ['#6fae4a', '#67a544'], path: 'rgba(150,132,100,0.55)', river: ['#6b7d5a', '#8a9a70', '#4a5a3a'], riverName: 'drainage ditch',
     bridge: '#8e6232', decor: ['tire', 'bush', 'can', 'flamingo'], unlocks: ['doordash', 'akpigeons', 'penjamin'] },
   { id: 'walmart', name: 'Walmart Parking Lot', skill: 0.5, cpu: 'Killer20046', boss: 'killer', level: 3, react: [1.2, 2.0],
