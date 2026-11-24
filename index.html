@@ -254,9 +254,10 @@
     opacity: 0; transition: opacity .25s; pointer-events: none; }
   .cf-tap.show { opacity: 1; animation: tapblink 1.1s ease-in-out infinite; }
   @keyframes tapblink { 50% { opacity: .45; } }
-  .cf-done { position: absolute; left: 50%; bottom: calc(26px + env(safe-area-inset-bottom)); transform: translateX(-50%) scale(.6); width: min(260px, 70vw); opacity: 0;
+  .chestfx .cf-done { position: absolute; left: 50%; bottom: calc(26px + env(safe-area-inset-bottom)); transform: translateX(-50%) scale(.6); width: min(260px, 70vw); opacity: 0;
     pointer-events: none; transition: opacity .2s, transform .25s; background: linear-gradient(#ffd23f, #f0a020); color: #3a2400; text-shadow: none; }
-  .cf-done.show { opacity: 1; transform: translateX(-50%) scale(1); pointer-events: auto; }
+  .chestfx .cf-done.show { opacity: 1; transform: translateX(-50%) scale(1); pointer-events: auto; }
+  .chestfx .cf-done.show:active { transform: translateX(-50%) translateY(4px); }
   .arena-item { position: relative; border: 3px solid #1a1a1a; border-radius: 16px; overflow: hidden; margin-bottom: 12px; background: var(--panel); }
   .arena-item canvas { display: block; width: 100%; height: auto; }
   .arena-item.locked canvas { filter: grayscale(.9) brightness(.5); }
@@ -774,14 +775,14 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/cards.js?v=44"></script>
-<script src="js/audio.js?v=44"></script>
-<script src="js/draw.js?v=44"></script>
-<script src="js/sim.js?v=44"></script>
-<script src="js/bot.js?v=44"></script>
-<script src="js/net.js?v=44"></script>
-<script src="js/progress.js?v=44"></script>
-<script src="js/chest.js?v=44"></script>
-<script src="js/main.js?v=44"></script>
+<script src="js/cards.js?v=45"></script>
+<script src="js/audio.js?v=45"></script>
+<script src="js/draw.js?v=45"></script>
+<script src="js/sim.js?v=45"></script>
+<script src="js/bot.js?v=45"></script>
+<script src="js/net.js?v=45"></script>
+<script src="js/progress.js?v=45"></script>
+<script src="js/chest.js?v=45"></script>
+<script src="js/main.js?v=45"></script>
 </body>
 </html>

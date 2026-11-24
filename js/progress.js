@@ -55,7 +55,7 @@ const TIPS = [
   'Upgrade your cards in the Cards tab or open a chest in the Shop.',
   'Challenge friends with custom modes like Triple Energy or Mirror Match.',
   'Sewer Rats come 8 at a time. One AK Pigeons spell wipes them out.',
-  'DoorDash Driver hops right over the river.',
+  'DoorDash Driver speeds over the bridge and goes straight for towers.',
 ];
 
 const Progress = (() => {

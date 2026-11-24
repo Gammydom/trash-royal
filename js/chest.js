@@ -42,7 +42,7 @@ const ChestFx = (() => {
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
     S.W = W; S.H = H; S.dpr = dpr;
     S.k = Math.min(W, 520, H * 0.6) / 384;                   // chest sprite scale
-    S.cx = W / 2; S.baseY = H * 0.9;                          // where the chest sits
+    S.cx = W / 2; S.baseY = Math.min(H * 0.9, H - 100);                          // where the chest sits
     S.cw = Math.min(W * 0.46, H * 0.25, 220); S.ch = S.cw * 1.32;
     // the card lands above the open chest, leaving room for its name + level line
     S.landY = Math.max(H * 0.2 + S.ch / 2, Math.min(H * 0.44, S.baseY - 200 * S.k - 70 - S.ch / 2));
