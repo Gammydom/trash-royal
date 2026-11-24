@@ -454,6 +454,137 @@
   .pick-opt.boss canvas { display: block; width: 100%; height: 74px; }
   .ch-map { height: 90px; border: 3px solid #1a1a1a; border-radius: 12px; background-size: 130% auto; background-position: center 42%; position: relative; margin: 8px 0; overflow: hidden; }
   .ch-map span { position: absolute; left: 0; right: 0; bottom: 0; padding: 4px; font-family: var(--title); font-size: 16px; letter-spacing: 1px; text-align: center; background: rgba(0,0,0,.55); color: #fff; }
+  /* Boss Raid: teammate strip and the boss on the accept pop-up */
+  #mateBar { display: flex; align-items: center; gap: 6px; margin: 0 0 6px; padding: 3px 8px; border-radius: 10px; background: rgba(255,210,63,.1); border: 2px solid rgba(255,210,63,.45); }
+  #mateBar.hidden { display: none; }
+  #mateBar .mb-tag { font-family: var(--title); font-size: 11px; letter-spacing: 1px; color: #3a2400; background: var(--gold); border-radius: 6px; padding: 1px 5px; }
+  #mateName { flex: 1; min-width: 0; font-weight: 700; font-size: 12px; color: var(--gold); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  #mateCards { display: flex; gap: 4px; }
+  #mateCards .tcard { pointer-events: none; width: 34px; padding: 2px; border-width: 2px; border-radius: 7px; }
+  #mateCards .tcard canvas { display: block; width: 100%; height: auto; }
+  #mateCards .tcard .nm { display: none; }
+  #mateCards .tcard .cost { font-size: 9px; width: 14px; height: 14px; line-height: 14px; top: -5px; left: -5px; }
+  .raid-boss { display: flex; align-items: center; gap: 10px; justify-content: center; margin: 8px 0; padding: 6px; border-radius: 12px; background: rgba(0,0,0,.25); }
+  .raid-boss canvas { width: 70px; height: 70px; }
+  .raid-boss small { display: block; color: var(--muted); font-size: 12px; } .raid-boss b { font-family: var(--title); font-size: 20px; color: var(--gold); letter-spacing: 1px; }
+  /* =========================================================
+     LOOK POLISH (2026-11-24): chunky glossy buttons, tiered card frames,
+     battle HUD plates, energy bar, VS intro and crown finish
+     ========================================================= */
+  :root { --pink: #e040fb; --pink-d: #8e24aa; --plate-blue: #1f5fd1; --plate-red: #c62828; --outline: #14120f; }
+  /* outlined title text */
+  .head h2, .res-title, #modal h3, .pick-label, .label, #banner, .vs-name, .vs-mid, .ai-title {
+    -webkit-text-stroke: 1px var(--outline); paint-order: stroke fill; }
+  .head h2, #modal h3 { text-shadow: 0 3px 0 var(--outline), 0 5px 8px rgba(0,0,0,.35); }
+  #banner { -webkit-text-stroke: 2px var(--outline); text-shadow: 0 5px 0 var(--outline), 0 0 24px rgba(255,210,63,.55); }
+
+  /* chunky glossy buttons with a bevel that press down */
+  .big-btn, .small-btn { position: relative; border-color: var(--outline);
+    background-image: linear-gradient(rgba(255,255,255,.32), rgba(255,255,255,0) 48%, rgba(0,0,0,.12) 52%, rgba(0,0,0,.18));
+    box-shadow: inset 0 2px 0 rgba(255,255,255,.45), inset 0 -3px 0 rgba(0,0,0,.25), 0 5px 0 var(--outline), 0 7px 10px rgba(0,0,0,.3);
+    -webkit-text-stroke: .6px rgba(0,0,0,.55); paint-order: stroke fill; }
+  .small-btn { box-shadow: inset 0 2px 0 rgba(255,255,255,.45), inset 0 -2px 0 rgba(0,0,0,.25), 0 3px 0 var(--outline), 0 5px 8px rgba(0,0,0,.25); }
+  .big-btn:active, .small-btn:active { transform: translateY(4px); box-shadow: inset 0 2px 0 rgba(255,255,255,.3), inset 0 -1px 0 rgba(0,0,0,.25), 0 1px 0 var(--outline); }
+  .big-btn { background-color: var(--green); } .big-btn.blue, .small-btn { background-color: var(--blue); }
+  .big-btn.gray, .small-btn.gray { background-color: #7a7566; } .big-btn.red, .small-btn.red { background-color: var(--red); }
+  .small-btn.green { background-color: var(--green); } .small-btn.gold { background-color: #ffc21a; color: #3a2400; -webkit-text-stroke: 0; }
+  .big-btn.battle { background-color: #ffc21a; background-image: linear-gradient(#fff3a0, #ffd23f 30%, #f6a71a 70%, #e08a10);
+    -webkit-text-stroke: 1.5px #5a3600; color: #fff; text-shadow: 0 3px 0 #8a5200; letter-spacing: 2px; }
+  .big-btn.battle small { -webkit-text-stroke: 0; text-shadow: none; }
+  /* sparkles on the Battle button */
+  .big-btn.battle::before { content: '\2726'; position: absolute; top: 6px; right: 14%; font-size: 16px; color: #fff; -webkit-text-stroke: 0; text-shadow: 0 0 8px #fff; animation: sparkle 2.4s ease-in-out infinite; }
+  @keyframes sparkle { 0%, 60%, 100% { opacity: 0; transform: scale(.4) rotate(0); } 70% { opacity: 1; transform: scale(1.2) rotate(45deg); } 85% { opacity: 0; transform: scale(.6) rotate(90deg); } }
+
+  /* raised Battle tab */
+  #tabbar { background: linear-gradient(#36485f, #1b2433); border-top: 3px solid var(--outline); box-shadow: 0 -4px 12px rgba(0,0,0,.35); overflow: visible; }
+  #tabbar button.mid { position: relative; color: #ffe9a8; z-index: 0; }
+  #tabbar button.mid::after { content: ''; position: absolute; left: 50%; top: -14px; width: 58px; height: 58px; transform: translateX(-50%); border-radius: 50%; z-index: -1;
+    background: radial-gradient(circle at 50% 35%, #ffe680, #f0a020 70%); border: 3px solid var(--outline); box-shadow: 0 4px 0 var(--outline), 0 0 14px rgba(255,190,40,.45); }
+  #tabbar button.mid span { font-size: 28px; transform: translateY(-10px); filter: none; }
+  #tabbar button.mid.on span { transform: translateY(-12px) scale(1.12); }
+  #tabbar button.on { background: linear-gradient(rgba(255,255,255,.1), rgba(255,255,255,0)); }
+
+  /* ---------- tiered card frames ---------- */
+  .tcard { border-color: var(--outline); border-radius: 12px;
+    background: linear-gradient(160deg, var(--t1, #8d8a80), var(--t2, #5b5850) 55%, var(--t3, #3e3c36));
+    box-shadow: inset 0 2px 0 rgba(255,255,255,.35), inset 0 -3px 0 rgba(0,0,0,.3), 0 3px 0 var(--outline); }
+  .tcard.tier-1 { --t1: #d9dde3; --t2: #9aa3ad; --t3: #66707a; }      /* 1-2 energy: silver */
+  .tcard.tier-2 { --t1: #8fc4ff; --t2: #3b7fe0; --t3: #23509a; }      /* 3: blue */
+  .tcard.tier-3 { --t1: #e3a6ff; --t2: #a347e0; --t3: #6a1f9e; }      /* 4: purple */
+  .tcard.tier-4 { --t1: #ffe78a; --t2: #f2b627; --t3: #b9790c; }      /* 5+: gold */
+  .tcard canvas { border-radius: 8px; background: radial-gradient(circle at 50% 40%, rgba(255,255,255,.35), rgba(0,0,0,.18)); }
+  .tcard .nm { color: #fff; -webkit-text-stroke: .5px rgba(0,0,0,.7); paint-order: stroke fill; text-shadow: 0 1px 0 rgba(0,0,0,.6); }
+  .tcard > .shine { position: absolute; inset: 3px; border-radius: 9px; overflow: hidden; pointer-events: none; }
+  .tcard > .shine::after { content: ''; position: absolute; top: -20%; bottom: -20%; width: 35%; left: -60%; transform: skewX(-18deg);
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,.45), transparent); animation: cardShine 5s ease-in-out infinite; animation-delay: var(--sd, 0s); }
+  @keyframes cardShine { 0%, 75% { left: -60%; } 92%, 100% { left: 130%; } }
+  /* energy-drop cost badge */
+  .cost { background: radial-gradient(circle at 35% 30%, #ffb3ff, var(--pink) 45%, var(--pink-d)); color: #fff; border-color: var(--outline);
+    border-radius: 50% 50% 50% 50% / 58% 58% 42% 42%; -webkit-text-stroke: .8px var(--outline); paint-order: stroke fill; font-family: var(--title); font-size: 15px; padding-top: 2px;
+    box-shadow: inset 0 2px 0 rgba(255,255,255,.5), 0 2px 0 var(--outline); }
+  .tcard .lvl { background: linear-gradient(#2a2a2a, #111); border: 2px solid var(--outline); color: #ffe27a; font-size: 10px; padding: 0 7px; box-shadow: 0 2px 0 var(--outline); }
+
+  /* ---------- battle HUD ---------- */
+  #topbar { background: linear-gradient(rgba(16,24,40,.92), rgba(16,24,40,.7)); border-bottom: 3px solid var(--outline); }
+  .tb-name { background: linear-gradient(#e14b4b, var(--plate-red)); border: 2px solid var(--outline); border-radius: 9px; padding: 2px 8px; font-size: 13px; color: #fff;
+    -webkit-text-stroke: .5px rgba(0,0,0,.6); paint-order: stroke fill; box-shadow: inset 0 1px 0 rgba(255,255,255,.35), 0 2px 0 var(--outline); max-width: 42vw; }
+  .crowns { display: inline-flex; align-items: center; gap: 2px; font-family: var(--title); font-size: 17px; padding: 1px 7px 0; border-radius: 9px; border: 2px solid var(--outline);
+    background: linear-gradient(#ff6b6b, #b71c1c); -webkit-text-stroke: .8px var(--outline); paint-order: stroke fill; box-shadow: 0 2px 0 var(--outline); }
+  #myCrowns { background: linear-gradient(#5aa2ff, #1d4fb8); }
+  /* the opponent's name tag hangs just under the top bar so long names fit */
+  #topbar .tb-name { position: absolute; left: 8px; top: calc(100% + 5px); max-width: 70vw; z-index: 3; font-size: 13px; }
+  .crowns.pop { animation: crownPop .5s cubic-bezier(.3,1.8,.5,1); }
+  @keyframes crownPop { 0% { transform: scale(1); } 40% { transform: scale(1.7); } 100% { transform: scale(1); } }
+  #timer { background: linear-gradient(#2b2f3a, #13151b); border: 2px solid #c99a2e; border-radius: 10px; padding: 4px 8px 2px; color: #fff; font-size: 21px;
+    -webkit-text-stroke: 1px var(--outline); paint-order: stroke fill; box-shadow: inset 0 1px 0 rgba(255,255,255,.2), 0 2px 0 var(--outline); }
+  #timer small { color: #ff9cf5; -webkit-text-stroke: 0; }
+  #hud { background: linear-gradient(#34465f, #1b2433 60%); border-top: 3px solid var(--outline); box-shadow: 0 -3px 0 rgba(255,210,63,.35) inset; }
+  #hand .slot .tcard { transition: transform .12s, box-shadow .12s; }
+  #hand .slot.sel { transform: translateY(-16px) scale(1.08); }
+  #hand .slot.sel .tcard { border-color: #fff; box-shadow: 0 0 0 3px var(--gold), 0 0 18px rgba(255,210,63,.8), 0 6px 0 var(--outline); }
+  #hand .slot.poor .cost { background: radial-gradient(circle at 35% 30%, #ccc, #777 50%, #444); }
+  #next { color: #cfd8e6; }
+  /* energy bar: glossy pink-purple with ticks and a drop holding the number */
+  #energy { height: 26px; margin-left: 30px; border-radius: 13px; border-color: var(--outline); background: linear-gradient(#1a1020, #2a1a33); overflow: visible; box-shadow: inset 0 2px 4px rgba(0,0,0,.6); }
+  #energyFill { border-radius: 10px; background: linear-gradient(#ffa8ff, var(--pink) 45%, #9c27b0 55%, #7b1fa2); box-shadow: 0 0 10px rgba(224,64,251,.55); transition: width .12s linear; }
+  #energyTicks { border-radius: 10px; background: repeating-linear-gradient(90deg, transparent 0 calc(10% - 2px), rgba(0,0,0,.5) calc(10% - 2px) 10%); }
+  #energyNum { left: -34px; width: 34px; height: 34px; top: 50%; display: flex; align-items: center; justify-content: center; padding-top: 3px; font-size: 19px;
+    background: radial-gradient(circle at 35% 30%, #ffb3ff, var(--pink) 45%, var(--pink-d)); border: 3px solid var(--outline);
+    border-radius: 50% 50% 50% 50% / 58% 58% 42% 42%; -webkit-text-stroke: 1px var(--outline); paint-order: stroke fill; box-shadow: inset 0 2px 0 rgba(255,255,255,.5), 0 2px 0 var(--outline); }
+  #energy.full #energyFill { animation: elxFull 1s ease-in-out infinite alternate; }
+  @keyframes elxFull { from { box-shadow: 0 0 8px rgba(224,64,251,.5); } to { box-shadow: 0 0 20px rgba(255,140,255,1); } }
+
+  /* ---------- VS intro ---------- */
+  #vsIntro { position: absolute; inset: 0; z-index: 8; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; pointer-events: none;
+    background: radial-gradient(circle at 50% 50%, rgba(20,24,40,.55), rgba(8,10,18,.9)); animation: vsFade 2.1s ease-in-out forwards; }
+  #vsIntro.hidden { display: none; }
+  @keyframes vsFade { 0% { opacity: 0; } 8%, 82% { opacity: 1; } 100% { opacity: 0; } }
+  .vs-plate { display: flex; align-items: center; gap: 10px; width: min(330px, 86vw); padding: 10px 14px; border: 3px solid var(--outline); border-radius: 14px;
+    box-shadow: inset 0 2px 0 rgba(255,255,255,.35), 0 5px 0 var(--outline); }
+  .vs-plate.them { background: linear-gradient(#ef5350, #b71c1c); animation: vsInL .45s cubic-bezier(.2,1.3,.4,1) both; }
+  .vs-plate.me { background: linear-gradient(#5aa2ff, #1d4fb8); animation: vsInR .45s .12s cubic-bezier(.2,1.3,.4,1) both; }
+  .vs-plate canvas { width: 54px; height: 54px; flex: none; }
+  .vs-plate .avatar { width: 50px; height: 50px; font-size: 26px; }
+  .vs-name { font-family: var(--title); font-size: 24px; letter-spacing: 1px; color: #fff; line-height: 1; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .vs-name small { display: block; font-family: var(--ui); font-size: 12px; letter-spacing: 0; -webkit-text-stroke: 0; color: rgba(255,255,255,.85); margin-top: 3px; }
+  .vs-mid { font-family: var(--title); font-size: 64px; color: var(--gold); -webkit-text-stroke: 2px var(--outline); text-shadow: 0 5px 0 var(--outline), 0 0 30px rgba(255,200,60,.7);
+    animation: vsBoom .5s .3s cubic-bezier(.2,1.8,.4,1) both; line-height: 1; }
+  .vs-arena { font-family: var(--title); letter-spacing: 1px; color: #cfd8e6; font-size: 15px; animation: vsBoom .4s .5s both; }
+  @keyframes vsInL { from { transform: translateX(-120%); } to { transform: none; } }
+  @keyframes vsInR { from { transform: translateX(120%); } to { transform: none; } }
+  @keyframes vsBoom { from { transform: scale(3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+
+  /* ---------- crown finish ---------- */
+  .res-row .rr-crowns b { display: inline-block; font-weight: normal; opacity: .18; filter: grayscale(1); transform: scale(.75); }
+  .res-row .rr-crowns b.got { animation: crownIn .45s cubic-bezier(.2,1.8,.4,1) forwards; }
+  @keyframes crownIn { 0% { opacity: 0; transform: scale(2.6) rotate(-20deg); filter: none; } 100% { opacity: 1; transform: scale(1); filter: drop-shadow(0 0 6px rgba(255,210,63,.9)); } }
+  .res-title { font-size: 46px; -webkit-text-stroke: 2px var(--outline); }
+  .res-title.win { color: #ffd23f; text-shadow: 0 5px 0 var(--outline), 0 0 26px rgba(255,210,63,.7); }
+  .res-title.lose { color: #ff5a5a; text-shadow: 0 5px 0 var(--outline); }
+  .res-row { border: 2px solid var(--outline); box-shadow: inset 0 1px 0 rgba(255,255,255,.15); }
+  .res-row.me { background: linear-gradient(90deg, rgba(47,123,255,.45), rgba(47,123,255,.12)); }
+  .res-row.them { background: linear-gradient(90deg, rgba(255,59,59,.45), rgba(255,59,59,.12)); }
+  .res-row .rr-name { color: #fff !important; }
 </style>
 </head>
 <body>
@@ -557,7 +688,9 @@
       <div class="tb-side right"><span class="crowns" id="myCrowns"></span><button class="icon-btn" id="muteBtn"></button></div>
     </div>
     <div id="banner"></div>
+    <div id="vsIntro" class="hidden"></div>
     <div id="hud">
+      <div id="mateBar" class="hidden"><span class="mb-tag">TEAMMATE</span><span id="mateName"></span><div id="mateCards"></div></div>
       <div id="hand">
         <div id="next">NEXT<div id="nextCard"></div></div>
         <div class="slot" data-i="0"><div class="cardbox"></div><span class="key">1</span></div><div class="slot" data-i="1"><div class="cardbox"></div><span class="key">2</span></div><div class="slot" data-i="2"><div class="cardbox"></div><span class="key">3</span></div><div class="slot" data-i="3"><div class="cardbox"></div><span class="key">4</span></div>
@@ -571,14 +704,14 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/cards.js?v=34"></script>
-<script src="js/audio.js?v=34"></script>
-<script src="js/draw.js?v=34"></script>
-<script src="js/sim.js?v=34"></script>
-<script src="js/bot.js?v=34"></script>
-<script src="js/net.js?v=34"></script>
-<script src="js/progress.js?v=34"></script>
-<script src="js/chest.js?v=34"></script>
-<script src="js/main.js?v=34"></script>
+<script src="js/cards.js?v=36"></script>
+<script src="js/audio.js?v=36"></script>
+<script src="js/draw.js?v=36"></script>
+<script src="js/sim.js?v=36"></script>
+<script src="js/bot.js?v=36"></script>
+<script src="js/net.js?v=36"></script>
+<script src="js/progress.js?v=36"></script>
+<script src="js/chest.js?v=36"></script>
+<script src="js/main.js?v=36"></script>
 </body>
 </html>

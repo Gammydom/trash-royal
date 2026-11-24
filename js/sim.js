@@ -13,12 +13,13 @@ class Sim {
   // opts: { levels: [{id: lvl}, {id: lvl}], towerLevel: [l0, l1], elixirMul: [m0, m1], speedMul, time, firstCrown }
   constructor(decks, opts = {}) {
     // opts.boss: [boss id | null, boss id | null] - a boss troop stands in place of that player's house
-    this.o = Object.assign({ levels: [{}, {}], towerLevel: [1, 1], elixirMul: [1, 1], speedMul: 1, time: REG_TIME, firstCrown: false, boss: [null, null] }, opts);
+    // opts.coop: Boss Raid - a second player (slot 2) shares side 0 with their own deck, hand and energy
+    this.o = Object.assign({ levels: [{}, {}, {}], towerLevel: [1, 1], elixirMul: [1, 1, 1], speedMul: 1, time: REG_TIME, firstCrown: false, boss: [null, null], hpMul: [1, 1], coop: false }, opts);
     this.regTime = this.o.time;
     this.t = 0; this.ents = []; this.projs = []; this.zones = []; this.events = [];
-    this.nid = 1; this.elixir = [5, 5]; this.crowns = [0, 0];
+    this.nid = 1; this.elixir = this.o.coop ? [5, 5, 5] : [5, 5]; this.crowns = [0, 0];
     this.ot = false; this.over = false; this.winner = -1;
-    this.players = [0, 1].map(i => { const d = shuffle(decks[i].slice()); return { hand: d.slice(0, 4), queue: d.slice(4) }; });
+    this.players = (this.o.coop ? [0, 1, 2] : [0, 1]).map(i => { const d = shuffle(decks[i].slice()); return { hand: d.slice(0, 4), queue: d.slice(4) }; });
     this.tower('princess', 0, 3.5, 25.5); this.tower('princess', 0, 14.5, 25.5); this.tower('king', 0, 9, 29);
     this.tower('princess', 1, 3.5, 6.5); this.tower('princess', 1, 14.5, 6.5); this.tower('king', 1, 9, 3);
   }
@@ -27,8 +28,8 @@ class Sim {
   tower(type, owner, x, y) {
     const bossId = type === 'king' && this.o.boss && this.o.boss[owner];
     const def = bossId && BOSSES[bossId] ? BOSSES[bossId] : DEFS[type];   // a boss keeps type 'king' so every house rule still applies
-    const lm = LV(this.o.towerLevel[owner]);
-    this.ents.push({ id: this.nid++, type, def, kind: 'tower', owner, x, y, hp: def.hp * lm, maxHp: def.hp * lm, r: def.r, air: false, lm,
+    const lm = LV(this.o.towerLevel[owner]), hm = (this.o.hpMul || [1, 1])[owner] || 1;
+    this.ents.push({ id: this.nid++, type, def, kind: 'tower', owner, x, y, hp: def.hp * lm * hm, maxHp: def.hp * lm * hm, r: def.r, air: false, lm,
       cd: 0, tid: 0, active: type !== 'king', atk: 0, dir: 1, deploy: 0, stun: 0, slow: 0, slowMul: 1, rage: 0, flags: 0, up: owner === 0,
       boss: bossId || null, specT: def.special ? def.special.every * 0.6 : 0, specAnim: 0 });
   }
@@ -147,18 +148,20 @@ class Sim {
   get(id) { if (!id) return null; for (const e of this.ents) if (e.id === id) return e; return null; }
 
   // ---------- playing cards ----------
-  play(owner, handIdx, x, y) {
+  play(slot, handIdx, x, y) {
     if (this.over) return false;
-    const p = this.players[owner];
+    const owner = slot === 2 ? 0 : slot;   // slot 2 = the Boss Raid teammate, playing for side 0
+    const p = this.players[slot];
+    if (!p) return false;
     const id = p.hand[handIdx];
     if (!id) return false;
     const def = DEFS[id];
-    if (this.elixir[owner] < def.cost - 1e-6) return false;
+    if (this.elixir[slot] < def.cost - 1e-6) return false;
     if (!canPlace(owner, def.kind, x, y, this.ents)) return false;
-    this.elixir[owner] -= def.cost;
+    this.elixir[slot] -= def.cost;
     p.queue.push(id); p.hand[handIdx] = p.queue.shift();
     this.ev({ e: 'sfx', n: 'pop' });
-    const lm = this.lvl(owner, id);
+    const lm = this.lvl(slot, id);
     if (def.kind === 'spell') this.castSpell(owner, def, x, y, lm);
     else {
       const n = def.count || 1;
@@ -166,7 +169,7 @@ class Sim {
       const flip = owner === 0 ? 1 : -1;
       for (const [ox, oy] of offs) {
         const ux = Math.max(0.5, Math.min(ARENA_W - 0.5, x + ox * flip)), uy = y + oy * flip;
-        this.spawn(id, owner, ux, uy, DEPLOY_T, lm);
+        this.spawn(id, owner, ux, uy, DEPLOY_T, lm).pl = slot;
       }
       this.ev({ e: 'fx', k: 'poof', x, y, r: def.r * (n > 1 ? 2 : 1.3) });
       if (def.deploySfx) this.ev({ e: 'sfx', n: def.deploySfx });
@@ -589,7 +592,7 @@ class Sim {
     if (this.over) return;
     this.t += dt;
     const dbl = this.t > this.regTime - 60;
-    for (let i = 0; i < 2; i++) this.elixir[i] = Math.min(10, this.elixir[i] + dt / (dbl ? 1.4 : 2.8) * this.o.elixirMul[i]);
+    for (let i = 0; i < this.elixir.length; i++) this.elixir[i] = Math.min(10, this.elixir[i] + dt / (dbl ? 1.4 : 2.8) * (this.o.elixirMul[i] || 1));
     if (!this.ot && this.t >= this.regTime) {
       if (this.crowns[0] !== this.crowns[1]) { this.end(this.crowns[0] > this.crowns[1] ? 0 : 1); return; }
       this.ot = true; this.ev({ e: 'sfx', n: 'overtime' }); this.ev({ e: 'banner', w: 'SUDDEN DEATH!' });
@@ -613,11 +616,11 @@ class Sim {
   // compact state for the guest's phone
   snapshot(forOwner) {
     const r = v => Math.round(v * 20);
-    const p = this.players[forOwner];
+    const p = this.players[forOwner], mate = this.o.coop ? this.players[forOwner === 2 ? 0 : 2] : null;
     return {
       t: Math.round(this.t * 100), el: Math.round(this.elixir[forOwner] * 100), cr: this.crowns, ot: this.ot ? 1 : 0, rt: this.regTime,
-      hand: p.hand, next: p.queue[0],
-      en: this.ents.map(e => [e.id, e.type === 'rubble' ? -1 : e.type === 'rubble_king' ? -2 : TYPE_IDX[e.type], e.owner, r(e.x), r(e.y), Math.ceil(e.hp), e.flags, e.dir, Math.round(e.atk * 10), e.tid || 0, Math.round((e.hop || 0) * 10), Math.ceil(e.maxHp)]),
+      hand: p.hand, next: p.queue[0], mh: mate ? mate.hand : undefined,
+      en: this.ents.map(e => [e.id, e.type === 'rubble' ? -1 : e.type === 'rubble_king' ? -2 : TYPE_IDX[e.type], e.owner, r(e.x), r(e.y), Math.ceil(e.hp), e.flags, e.dir, Math.round(e.atk * 10), e.tid || 0, Math.round((e.hop || 0) * 10), Math.ceil(e.maxHp), e.pl === 2 ? 1 : 0]),
       pr: this.projs.map(q => [q.id, q.style, r(q.x), r(q.y), q.owner]),
       zo: this.zones.map(z => [z.id, z.type, r(z.x), r(z.y), Math.round(z.t * 100), z.owner]),
       over: this.over ? 1 : 0, win: this.winner,
@@ -629,12 +632,12 @@ class Sim {
 function unpackSnapshot(s) {
   const f = v => v / 20;
   return {
-    t: s.t / 100, elixir: s.el / 100, crowns: s.cr, ot: !!s.ot, hand: s.hand, next: s.next, over: !!s.over, winner: s.win, regTime: s.rt || REG_TIME,
+    t: s.t / 100, elixir: s.el / 100, crowns: s.cr, ot: !!s.ot, hand: s.hand, next: s.next, mateHand: s.mh, over: !!s.over, winner: s.win, regTime: s.rt || REG_TIME,
     ents: s.en.map(a => {
       const type = a[1] === -1 ? 'rubble' : a[1] === -2 ? 'rubble_king' : TYPE_LIST[a[1]];
       const def = DEFS[type] || { kind: 'decor', r: 0 };
       return { id: a[0], type, def, kind: a[1] < 0 ? 'decor' : def.kind === 'tower' ? 'tower' : def.kind === 'building' ? 'building' : 'unit',
-        owner: a[2], x: f(a[3]), y: f(a[4]), hp: a[5], maxHp: a[11] || def.hp || 1, r: def.r || 0, air: !!def.air, flags: a[6], dir: a[7], atk: a[8] / 10, tid: a[9], hop: a[10] / 10 };
+        owner: a[2], x: f(a[3]), y: f(a[4]), hp: a[5], maxHp: a[11] || def.hp || 1, r: def.r || 0, air: !!def.air, flags: a[6], dir: a[7], atk: a[8] / 10, tid: a[9], hop: a[10] / 10, pl: a[12] ? 2 : 0 };
     }),
     projs: s.pr.map(a => ({ id: a[0], style: a[1], x: f(a[2]), y: f(a[3]), owner: a[4] })),
     zones: s.zo.map(a => ({ id: a[0], type: a[1], x: f(a[2]), y: f(a[3]), t: a[4] / 100, owner: a[5], r: (DEFS[a[1]] || {}).radius })),

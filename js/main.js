@@ -44,7 +44,8 @@
 
   function makeCard(id, opts = {}) {
     const def = DEFS[id];
-    const el = document.createElement('div'); el.className = 'tcard';
+    const el = document.createElement('div'); el.className = 'tcard tier-' + (def.cost <= 2 ? 1 : def.cost === 3 ? 2 : def.cost === 4 ? 3 : 4);
+    const sh = document.createElement('div'); sh.className = 'shine'; sh.style.setProperty('--sd', (Math.random() * 5).toFixed(2) + 's'); el.appendChild(sh);
     const cv = document.createElement('canvas'); cv.width = opts.px || 120; cv.height = opts.px || 120;
     el.appendChild(cv);
     const nm = document.createElement('div'); nm.className = 'nm'; nm.textContent = def.name; el.appendChild(nm);
@@ -662,11 +663,12 @@
       <div class="pick-label">Game mode</div>
       <div class="mode-list">${MODES.map((m, i) =>
       `<div class="mode-opt ${i === pick ? 'on' : ''}" data-i="${i}"><div><b>${esc(m.name)}</b><span>${esc(m.desc)}</span></div></div>`).join('')}</div>
-      <div id="bossPickWrap" class="${MODES[pick].boss ? '' : 'hidden'}"><div class="pick-label">Your boss</div>${bossPickerHtml(boss)}</div>`;
+      <div id="bossPickWrap" class="${MODES[pick].boss || MODES[pick].raid ? '' : 'hidden'}"><div class="pick-label" id="bossPickLabel">${MODES[pick].raid ? 'Boss to fight' : 'Your boss'}</div>${bossPickerHtml(boss)}</div>`;
     const p = modal(html, [{ label: 'Cancel', cls: 'gray' }, { label: 'Send challenge', cls: 'green' }]);
     document.querySelectorAll('.mode-opt').forEach(el => el.onclick = () => {
       pick = +el.dataset.i; document.querySelectorAll('.mode-opt').forEach(o => o.classList.toggle('on', o === el)); Sfx.play('tick');
-      $('bossPickWrap').classList.toggle('hidden', !MODES[pick].boss);
+      $('bossPickWrap').classList.toggle('hidden', !MODES[pick].boss && !MODES[pick].raid);
+      $('bossPickLabel').textContent = MODES[pick].raid ? 'Boss to fight' : 'Your boss';
     });
     document.querySelectorAll('#mapPick .pick-opt').forEach(el => el.onclick = () => {
       map = +el.dataset.i; document.querySelectorAll('#mapPick .pick-opt').forEach(o => o.classList.toggle('on', o === el)); Sfx.play('tick');
@@ -680,7 +682,7 @@
   async function challengeFriend(name, mode, map, boss) {
     let cancelled = false;
     modal(`<h3>Calling ${esc(name)}...</h3><p>${esc(mode.name)} on ${esc(ARENAS[map].name)}: waiting for them to accept.</p>`, [{ label: 'Cancel', cls: 'gray' }]).then(() => { cancelled = true; Net.cancelChallenge(); });
-    const extra = { mode: mode.id, arena: map, boss: mode.boss ? boss : undefined };
+    const extra = { mode: mode.id, arena: map, boss: mode.boss || mode.raid ? boss : undefined };
     const r = await Net.challenge(name, deck, extra);
     if (cancelled) return;
     closeModal();
@@ -688,7 +690,7 @@
       const why = { offline: `${name} is offline.`, declined: `${name} said no.`, busy: `${name} is already in a battle.`, timeout: `${name} didn't answer.`, closed: 'Connection lost.' }[r.why] || 'Could not connect.';
       toast(why); return;
     }
-    startOnline('host', name, { deck: r.deck, levels: r.levels, mode: mode.id, arena: map, bosses: [boss, okBoss(r.boss)] });
+    startOnline('host', name, { deck: r.deck, levels: r.levels, mode: mode.id, arena: map, bosses: [boss, okBoss(r.boss)], raidBoss: boss });
   }
   Net.on('challenge', async (from, conn, msg) => {
     if (!/^[A-Za-z0-9_]{3,16}$/.test(from)) { Net.decline(conn); return; }
@@ -700,9 +702,11 @@
     const kp = modal(`<h3>Battle!</h3><p><b>${esc(from)}</b> wants to battle you!</p>
       <div class="ch-map" style="background-image:url(arenas/${ARENAS[map].id}.webp?v=1)"><span>${esc(ARENAS[map].name)}</span></div>
       <p>Mode: <b style="color:var(--gold)">${esc(mode.name)}</b><br>${esc(mode.desc)}</p>
-      ${mode.boss ? `<p>Their boss: <b style="color:var(--gold)">${esc(BOSSES[okBoss(msg.boss)].name)}</b></p><div class="pick-label">Pick your boss</div>${bossPickerHtml(boss)}` : ''}`,
+      ${mode.boss ? `<p>Their boss: <b style="color:var(--gold)">${esc(BOSSES[okBoss(msg.boss)].name)}</b></p><div class="pick-label">Pick your boss</div>${bossPickerHtml(boss)}` : ''}
+      ${mode.raid ? `<div class="raid-boss"><canvas width="160" height="160" id="raidBossCv"></canvas><div><small>You two vs</small><b>${esc(BOSSES[okBoss(msg.boss)].name)}</b></div></div>` : ''}`,
       [{ label: 'Decline', cls: 'gray' }, { label: 'Accept', cls: 'green' }]);
     if (mode.boss) wireBossPicker(boss, b => { boss = b; });
+    if (mode.raid) bossPortrait($('raidBossCv'), okBoss(msg.boss));
     const k = await kp;
     if (k !== 1 || !conn.open) { Net.decline(conn); if (k === 1) toast('They left.'); return; }
     Sfx.init();
@@ -710,7 +714,7 @@
     if (mode.boss) store.set('boss', boss);
     const lv = {}; deck.forEach(id => lv[id] = Progress.level(id));
     Net.accept(conn, deck, { levels: lv, boss: mode.boss ? boss : undefined });
-    startOnline('guest', from, { mode: mode.id, arena: map, bosses: [okBoss(msg.boss), boss] });
+    startOnline('guest', from, { mode: mode.id, arena: map, bosses: [okBoss(msg.boss), boss], raidBoss: okBoss(msg.boss) });
   });
 
   // ---------------- the match ----------------
@@ -721,7 +725,7 @@
   const UNIT_SCALE = 1.3; // draw troops a bit bigger than their hitbox so they read on small phones
 
   function newMatch(mode, oppName, arena) {
-    return { mode, oppName, arena: arena || 0, me: mode === 'guest' ? 1 : 0, sim: null, bot: null, view: null, acc: 0, snapT: 0, netEv: [],
+    return { mode, oppName, arena: arena || 0, me: mode === 'guest' ? 1 : 0, slot: mode === 'guest' ? 1 : 0, coop: false, mateName: '', sim: null, bot: null, view: null, acc: 0, snapT: 0, netEv: [],
       fx: [], decals: [], shake: 0, disp: {}, anim: {}, sel: -1, drag: null, over: false, dbl: false, started: performance.now(), lastSnapAt: 0, boss: [null, null],
       heardAt: performance.now(), hbTimer: 0 };
   }
@@ -747,6 +751,21 @@
     const mode = MODES.find(m => m.id === info.mode) || MODES[0];
     G = newMatch(role, oppName, info.arena);
     G.modeName = mode.name;
+    if (mode.raid) {   // Boss Raid: you and your friend share side 0 against a boss, his towers and a CPU
+      const bid = okBoss(info.raidBoss), bi = BOSS_IDS.indexOf(bid), ai = Math.max(0, ARENAS.findIndex(a => a.boss === bid)), ar = ARENAS[ai];
+      G.coop = true; G.me = 0; G.slot = role === 'guest' ? 2 : 0; G.mateName = oppName; G.raidBi = bi;
+      G.oppName = BOSSES[bid].name; G.boss = [null, bid];
+      Progress.addRecent(oppName);
+      if (role === 'host') {
+        const dMate = validDeck(info.deck) ? info.deck : DEFAULT_DECK.slice();
+        const lvl = Math.min(MAX_LEVEL, ar.level + 1), botDeck = Progress.cpuDeck(ai), botLv = {}; botDeck.forEach(id => botLv[id] = lvl);
+        G.sim = new Sim([deck.slice(), botDeck, dMate], { coop: true, boss: G.boss.slice(), levels: [{}, botLv, {}], towerLevel: [1, ar.level],
+          elixirMul: [1, ar.elixir * 1.8, 1], hpMul: [1, 1.5] });
+        G.bot = new Bot(G.sim, 1, { react: ar.react, skill: Math.max(ar.skill, 0.35) });
+      }
+      enterGame();
+      return;
+    }
     if (mode.boss) {   // Boss Battle: each player's house becomes the boss they picked ([challenger, friend])
       const b = info.bosses || [];
       G.boss = [okBoss(b[0]), okBoss(b[1])];
@@ -777,8 +796,30 @@
     bgKey = '';
     buildHand(true);
     resize();
-    banner(G.modeName && G.modeName !== 'Classic' ? G.modeName.toUpperCase() + '!' : 'FIGHT!', 1300);
-    Sfx.play('fight');
+    $('myCrowns').textContent = ''; $('oppCrowns').textContent = '';
+    vsIntro();
+    G.introUntil = performance.now() + 1900;
+    setTimeout(() => { if (!G || G.over) return; banner(G.modeName && G.modeName !== 'Classic' ? G.modeName.toUpperCase() + '!' : 'FIGHT!', 1300); Sfx.play('fight'); }, 1900);
+  }
+  // "YOU vs THEM" splash: their plate slides in from the left, yours from the right, VS slams in the middle
+  function vsIntro() {
+    const box = $('vsIntro'); if (!box) return;
+    const bossId = G.boss && G.boss[1 - G.me];
+    const ar = ARENAS[G.arena] || ARENAS[0];
+    const themSub = G.mode === 'cpu' ? (bossId ? 'Boss of ' + ar.name : 'CPU') : G.coop ? 'Boss Raid' : G.mode === 'bot' ? 'Practice' : 'Friend';
+    const meName = (username || 'You') + (G.coop ? ' + ' + G.mateName : '');
+    box.innerHTML = `<div class="vs-plate them">${bossId ? '<canvas width="120" height="120" id="vsBossCv"></canvas>' : avatarHtml(G.oppName || '?', true)}<div class="vs-name"></div></div>
+      <div class="vs-mid">VS</div>
+      <div class="vs-plate me">${avatarHtml(username || 'You', true)}<div class="vs-name"></div></div>
+      <div class="vs-arena"></div>`;
+    const names = box.querySelectorAll('.vs-name');
+    names[0].textContent = G.oppName; names[0].insertAdjacentHTML('beforeend', `<small>${esc(themSub)}</small>`);
+    names[1].textContent = meName; names[1].insertAdjacentHTML('beforeend', `<small>${G.coop ? 'Team' : 'You'}</small>`);
+    box.querySelector('.vs-arena').textContent = ar.name + (G.modeName && G.modeName !== 'Classic' ? ' \u00b7 ' + G.modeName : '');
+    if (bossId) bossPortrait($('vsBossCv'), bossId);
+    box.classList.remove('hidden'); box.style.animation = 'none'; void box.offsetWidth; box.style.animation = '';
+    Sfx.play('horn');
+    clearTimeout(vsIntro.t); vsIntro.t = setTimeout(() => box.classList.add('hidden'), 2100);
   }
   function banner(text, ms = 1500) {
     const b = $('banner'); b.textContent = text; b.classList.add('show');
@@ -801,10 +842,10 @@
     if (!G || G.over) return;
     G.heardAt = performance.now();
     if (msg.t === 'hb') return;
-    if (msg.t === 'bye') { finish(G.me, `${G.oppName} left the battle.`); return; }
+    if (msg.t === 'bye' || (msg.t === 'quit' && G.coop)) { left(msg.t === 'bye' ? 'left' : 'gave up'); return; }
     if (G.mode === 'host' && msg.t === 'play') {
       const i = msg.i | 0, x = +msg.x, y = +msg.y;
-      if (i >= 0 && i < 4 && isFinite(x) && isFinite(y)) G.sim.play(1, i, x, y);
+      if (i >= 0 && i < 4 && isFinite(x) && isFinite(y)) G.sim.play(G.coop ? 2 : 1, i, x, y);
     } else if (G.mode === 'guest' && msg.t === 'snap' && msg.s) {
       try {
         G.view = unpackSnapshot(msg.s);
@@ -816,7 +857,13 @@
       finish(G.me, `${G.oppName} gave up!`);
     }
   });
-  Net.on('matchClosed', () => { if (G && !G.over && (G.mode === 'host' || G.mode === 'guest')) finish(G.me, `${G.oppName} left the battle.`); });
+  Net.on('matchClosed', () => { if (G && !G.over && (G.mode === 'host' || G.mode === 'guest')) left('left'); });
+  function left(how) {
+    if (!G || G.over) return;
+    if (!G.coop) { finish(G.me, `${G.oppName} ${how === 'left' ? 'left the battle.' : 'gave up!'}`); return; }
+    if (G.mode === 'host') { if (!G.mateGone) { G.mateGone = true; clearInterval(G.hbTimer); toast(`${G.mateName} ${how}. Keep fighting!`); } }
+    else finish(-1, `${G.mateName} ${how}, so the raid is over.`);
+  }
 
   async function finish(winner, note) {
     if (!G || G.over) return;
@@ -835,6 +882,9 @@
       res = Progress.cpuResult(won, draw, myCr, ai);
       publishInfo();
       rewards = `<div class="res-reward"><span class="res-chip">${COIN} +${res.coins}</span></div>` + (res.newArena >= 0 ? `<div class="res-unlock">\u{1F513} You beat ${esc(ARENAS[ai].name)}! ${esc(ARENAS[res.newArena].name)} unlocked!</div>` : '');
+    } else if (G.coop) {
+      const c = Progress.raidResult(won, G.raidBi);
+      rewards = `<div class="res-reward"><span class="res-chip">${COIN} +${c}</span></div>` + (won ? `<div class="res-unlock">\u{1F91D} You and ${esc(G.mateName)} beat ${esc(opp)}!</div>` : '');
     } else if (mode === 'host' || mode === 'guest') {
       const c = Progress.friendResult(won);
       rewards = `<div class="res-reward"><span class="res-chip">${COIN} +${c}</span></div>`;
@@ -842,15 +892,17 @@
     await new Promise(r => setTimeout(r, 1200));
     const title = won ? 'YOU WIN!' : draw ? 'DRAW!' : 'YOU LOSE';
     // 3 crown slots each: earned ones in colour, missing ones greyed out
-    const crownRow = n => '\u{1F451}'.repeat(n) + '<i>\u{1F451}</i>'.repeat(Math.max(0, 3 - n));
+    const crownRow = n => [0, 1, 2].map(i => `<b${i < n ? ' data-got="1"' : ''}>\u{1F451}</b>`).join('');
     const rows = `<div class="res-rows">
-      <div class="res-row me">${avatarHtml(username || 'You')}<span class="rr-name">${esc(username || 'You')}</span><span class="rr-crowns">${crownRow(myCr)}</span></div>
+      <div class="res-row me">${avatarHtml(username || 'You')}<span class="rr-name">${esc(username || 'You')}${G.coop ? ` + ${esc(G.mateName)}` : ''}</span><span class="rr-crowns">${crownRow(myCr)}</span></div>
       <div class="res-row them">${avatarHtml(opp || '?')}<span class="rr-name">${esc(opp || 'Opponent')}</span><span class="rr-crowns">${crownRow(opCr)}</span></div></div>`;
     const sub = note ? `<p>${esc(note)}</p>` : '';
     const again = mode === 'cpu' || mode === 'bot';
     const nextUp = res && res.newArena >= 0;
     const btns = again ? [{ label: 'Home', cls: 'gray' }, { label: nextUp ? 'Next arena!' : 'Play again', cls: 'green' }] : [{ label: 'Home', cls: 'green' }];
-    const k = await modal(`<div class="res-title ${won ? 'win' : draw ? 'draw' : 'lose'}">${title}</div>${rows}${sub}${rewards}`, btns);
+    const kp = modal(`<div class="res-title ${won ? 'win' : draw ? 'draw' : 'lose'}">${title}</div>${rows}${sub}${rewards}`, btns);
+    document.querySelectorAll('.rr-crowns b[data-got]').forEach((b, i) => setTimeout(() => { b.classList.add('got'); Sfx.play('ding'); }, 450 + i * 380));
+    const k = await kp;
     G = null; Net.setFighting(false);
     if (res && res.newArena >= 0) await arenaUnlocked(res.newArena);
     if (again && k === 1) { if (mode === 'cpu') startCPU(nextUp ? res.newArena : ai); else startPractice(); }
@@ -895,7 +947,8 @@
       return v;
     }
     const s = G.sim;
-    return { ents: s.ents, projs: s.projs, zones: s.zones, t: s.t, crowns: s.crowns, elixir: s.elixir[G.me], hand: s.players[G.me].hand, next: s.players[G.me].queue[0], ot: s.ot, regTime: s.regTime };
+    return { ents: s.ents, projs: s.projs, zones: s.zones, t: s.t, crowns: s.crowns, elixir: s.elixir[G.slot], hand: s.players[G.slot].hand, next: s.players[G.slot].queue[0], ot: s.ot, regTime: s.regTime,
+      mateHand: G.coop ? s.players[2].hand : undefined };
   }
 
   // ---------------- layout ----------------
@@ -990,6 +1043,17 @@
       if (st.next) $('nextCard').appendChild(makeCard(st.next, { px: 70 }));
     }
     handIds = ids.slice(); handIds.next = st.next;
+    // Boss Raid: your teammate's 4 cards in a little strip above your hand
+    const mb = $('mateBar');
+    mb.classList.toggle('hidden', !G.coop);
+    if (G.coop) {
+      const mh = st.mateHand || [], key = mh.join(',') + (G.mateGone ? '|left' : '');
+      if (force || mb.dataset.k !== key) {
+        mb.dataset.k = key; $('mateName').textContent = G.mateName + (G.mateGone ? ' (left)' : '');
+        const box = $('mateCards'); box.innerHTML = '';
+        mh.forEach(id => { if (id) box.appendChild(makeCard(id, { px: 40 })); });
+      }
+    }
   }
   function selectSlot(i) {
     if (!G || G.over) return;
@@ -1072,6 +1136,7 @@
     // snap to tile halves like the real thing feels
     x = Math.round(x * 2) / 2; y = Math.round(y * 2) / 2;
     if (def.kind !== 'spell') { x = Math.max(0.5, Math.min(ARENA_W - 0.5, x)); }
+    if (G.introUntil && performance.now() < G.introUntil) return;   // wait for the VS intro
     if (st.elixir < def.cost) { Sfx.play('nope'); toast('Not enough energy'); return; }
     if (!canPlace(G.me, def.kind, x, y, st.ents)) { Sfx.play('nope'); toast(def.kind === 'spell' ? 'Drop it on the arena' : 'Drop troops on your side'); return; }
     if (G.mode === 'guest') {
@@ -1079,7 +1144,7 @@
       Sfx.play('pop');
       G.fx.push({ k: 'poof', x, y, r: 0.6, t: 0, dur: 0.3 });
     } else {
-      G.sim.play(G.me, G.sel, x, y);
+      G.sim.play(G.slot, G.sel, x, y);
     }
     clearSel();
   }
@@ -1092,7 +1157,7 @@
     const dt = Math.min(0.1, rawDt);
     if (!G) return;
     // simulate (catch up if the phone dropped frames)
-    if (G.sim && !G.over) {
+    if (G.sim && !G.over && !(G.introUntil && performance.now() < G.introUntil)) {
       G.acc += rawDt;
       let n = 0;
       while (G.acc >= STEP && n < 16) {
@@ -1107,7 +1172,7 @@
         G.snapT -= dt;
         if (G.snapT <= 0 || G.sim.over) {
           G.snapT = 0.066;
-          Net.send({ t: 'snap', s: G.sim.snapshot(1), ev: G.netEv });
+          Net.send({ t: 'snap', s: G.sim.snapshot(G.coop ? 2 : 1), ev: G.netEv });
           G.netEv = [];
         }
       }
@@ -1116,8 +1181,8 @@
     // the other player went quiet: host listens for the friend's heartbeat, the friend waits for the game to keep moving
     if (G && !G.over && (G.mode === 'host' || G.mode === 'guest')) {
       const nowMs = performance.now();
-      if (G.mode === 'host' && nowMs - G.heardAt > LEFT_AFTER) finish(G.me, `${G.oppName} left the battle.`);
-      else if (G.mode === 'guest' && nowMs - Math.max(G.lastSnapAt, G.started) > LEFT_AFTER + 8000) finish(G.me, `Lost ${G.oppName}. They left the battle.`);
+      if (G.mode === 'host' && !G.mateGone && nowMs - G.heardAt > LEFT_AFTER) left('left');
+      else if (G.mode === 'guest' && nowMs - Math.max(G.lastSnapAt, G.started) > LEFT_AFTER + 8000) { if (G.coop) left('left'); else finish(G.me, `Lost ${G.oppName}. They left the battle.`); }
     }
     if (!G) return;
     render(dt);
@@ -1137,8 +1202,10 @@
     const m = Math.floor(rem / 60), s = Math.floor(rem % 60);
     $('timer').innerHTML = `${m}:${String(s).padStart(2, '0')}${label ? `<small>${label}</small>` : ''}`;
     if (!G.dbl && st.t > (st.regTime || REG_TIME) - 60 && !st.ot) { G.dbl = true; banner('DOUBLE ENERGY!', 1500); Sfx.play('overtime'); }
-    $('myCrowns').textContent = '\u{1F451}' + st.crowns[G.me];
-    $('oppCrowns').textContent = '\u{1F451}' + st.crowns[1 - G.me];
+    for (const [id, n] of [['myCrowns', st.crowns[G.me]], ['oppCrowns', st.crowns[1 - G.me]]]) {
+      const el = $(id), t = '\u{1F451}' + n;
+      if (el.textContent !== t) { const grew = el.textContent && el.textContent !== ''; el.textContent = t; if (grew) { el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop'); } }
+    }
   }
 
   function render(dt) {
@@ -1330,7 +1397,9 @@
     const rr = Math.max(0.28, e.r * 0.9) * (e.kind === 'unit' ? 1.15 : 1);
     { const g = ctx.createRadialGradient(0, 0, 0, 0, 0, rr * 1.2); g.addColorStop(0, 'rgba(0,0,0,0.38)'); g.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.save(); ctx.scale(1, 0.45); ctx.fillStyle = g; ctx.beginPath(); ctx.arc(0, 0, rr * 1.2, 0, 7); ctx.fill(); ctx.restore(); }
-    ctx.strokeStyle = TEAM[team]; ctx.lineWidth = 0.07;
+    // Boss Raid: your teammate's troops get a gold ring instead of blue
+    const mate = G.coop && team === 0 && e.kind !== 'tower' && (G.slot === 2 ? e.pl !== 2 : e.pl === 2);
+    ctx.strokeStyle = mate ? '#ffd23f' : TEAM[team]; ctx.lineWidth = mate ? 0.1 : 0.07;
     ctx.beginPath(); ctx.ellipse(0, 0, rr, rr * 0.45, 0, 0, Math.PI * 2); ctx.stroke();
     const deploying = e.flags & 16;
     if (deploying) { ctx.globalAlpha = 0.55; }

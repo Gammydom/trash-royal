@@ -37,6 +37,7 @@ const MODES = [
   { id: 'mirror', name: 'Mirror Match', desc: 'Both of you use the challenger\'s deck.', mirror: true },
   { id: 'speed', name: 'Speed Run', desc: 'Troops move 50% faster. 2-minute match.', opts: { speedMul: 1.5, time: 120 } },
   { id: 'levels', name: 'Real Levels', desc: 'Your card upgrades count. Grind pays off.', levels: true },
+  { id: 'raid', name: 'Boss Raid (2v1)', desc: 'Team up! You and your friend share one side against a boss, his towers and a CPU. Big coins if you beat him.', raid: true },
   { id: 'boss', name: 'Boss Battle', desc: 'Both of you pick a boss to stand in for your house. Pick a strong one!', boss: true },
 ];
 
@@ -117,6 +118,8 @@ const Progress = (() => {
     return { coins, newArena };
   }
   function friendResult(won) { S.coins += won ? 10 : 3; save(); return won ? 10 : 3; }
+  // Boss Raid: more coins for tougher bosses (bi = boss step 0..6)
+  function raidResult(won, bi) { const c = won ? 30 + 15 * Math.max(0, bi | 0) : 5; S.coins += c; save(); return c; }
   function addRecent(name) { S.recent = [name].concat(S.recent.filter(n => n.toLowerCase() !== name.toLowerCase())).slice(0, 6); save(); }
   // ---- shop ----
   function giftReady() { return S.lastGift !== today(); }
@@ -163,5 +166,5 @@ const Progress = (() => {
     return { cards, coins };
   }
   return { init, save, get: () => S, arena, bestArena, unlocked, unlockArenaOf, level, levels, upgradeCost, upgrade, kingLevel,
-    cpuLevel, cpuDeck, cpuResult, friendResult, addRecent, giftReady, claimGift, deals, boughtDeal, buyDeal, earlyPrice, buyEarly, msToReset, CHESTS, buyChest };
+    cpuLevel, cpuDeck, cpuResult, friendResult, raidResult, addRecent, giftReady, claimGift, deals, boughtDeal, buyDeal, earlyPrice, buyEarly, msToReset, CHESTS, buyChest };
 })();
