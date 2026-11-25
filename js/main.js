@@ -10,6 +10,9 @@
   Progress.init(store);
   const validDeck = d => Array.isArray(d) && d.length === 8 && new Set(d).size === 8 && d.every(id => DEFS[id] && DEFS[id].cost);
   let username = store.get('name', '');
+  // updates log: brand-new players start caught up (no "What's new" popup on their first visit)
+  const LATEST = UPDATES[0];
+  if (!username && store.get('seenUpdate', 0) === 0) store.set('seenUpdate', LATEST.v);
   // 3 saved decks; the picked one (deckSlot) is used for every battle. Old saves move their deck into Deck 1.
   let decks = store.get('decks', null);
   if (!Array.isArray(decks) || decks.length !== 3) decks = [store.get('deck', null), null, null];
@@ -254,6 +257,7 @@
     $('cpuHint').textContent = `vs ${ar.cpu} · level ${Progress.cpuLevel(a)}`;
     $('giftBanner').classList.toggle('hidden', !Progress.giftReady());
     renderQuests();
+    renderNews();
     const hd = $('homeDeckCards'); hd.innerHTML = '';
     deck.forEach(id => { const c = makeCard(id, { px: 72 }); c.onclick = () => show('deck'); hd.appendChild(c); });
     $('netText').textContent = netState === 'on' ? '\u{1F7E2} Online: friends can find you' : netState === 'wait' ? 'Connecting...' : 'Offline: CPU battles still work';
@@ -287,6 +291,31 @@
     p.then(() => { if (screen === 'home') renderHome(); });
   }
   $('homeQuests').onclick = () => { Sfx.init(); Sfx.play('tick'); questsModal(); };
+
+  // ---------------- updates log ----------------
+  const fmtDate = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); };
+  const unreadNews = () => store.get('seenUpdate', 0) < LATEST.v;
+  function renderNews() {
+    const b = $('newsBanner'); if (!b) return;
+    const un = unreadNews();
+    b.innerHTML = `<span class="hb-ico">\u{1F4F0}</span><span class="hb-txt"><b>Updates${un ? '<span class="nb-new">NEW</span>' : ''}</b>Latest: ${esc(LATEST.title)} · ${fmtDate(LATEST.date)}</span><span class="hb-go">\u2192</span>${un ? '<i class="nb-dot"></i>' : ''}`;
+  }
+  const updHtml = (u, i) => `<div class="upd${i === 0 ? ' newest' : ''}"><div class="upd-head"><b>${esc(u.title)}</b><span class="upd-v">v${u.v}</span><span class="upd-date">${fmtDate(u.date)}</span></div>
+    <ul>${u.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul></div>`;
+  function markNewsSeen() { store.set('seenUpdate', LATEST.v); if (screen === 'home') renderNews(); }
+  async function updatesModal() {
+    markNewsSeen();
+    await modal(`<h3>\u{1F4F0} Updates</h3><p>Everything that's changed, newest first.</p><div class="upd-list">${UPDATES.map(updHtml).join('')}</div>`, [{ label: 'Close', cls: 'green' }]);
+  }
+  $('newsBanner').onclick = () => { Sfx.init(); Sfx.play('tick'); updatesModal(); };
+  // the first time you open a new version: show what's new, once
+  async function maybeWhatsNew() {
+    if (!unreadNews() || !username || G || modalResolve || screen !== 'home' || opening) return;
+    markNewsSeen();
+    const k = await modal(`<h3>\u{2728} What's new</h3><div class="upd-list">${updHtml(LATEST, 0)}</div>`, [{ label: 'All updates', cls: 'blue' }, { label: 'Cool!', cls: 'green' }]);
+    if (k === 0) updatesModal();
+  }
+  setInterval(maybeWhatsNew, 1500);
 
   $('copyName').onclick = async () => {
     const b = $('copyName');

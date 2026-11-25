@@ -604,6 +604,19 @@
   .deck-tab.on { color: #fff; background: linear-gradient(#fff3a0, #ffd23f 40%, #f0a020); color: #3a2400; -webkit-text-stroke: 0; transform: translateY(-2px); box-shadow: inset 0 2px 0 rgba(255,255,255,.6), 0 5px 0 var(--outline, #14120f); }
   /* daily quests on the home screen */
   .home-banner.quests { background: linear-gradient(#3a4a63, #232d3d); }
+  .home-banner.news { position: relative; background: linear-gradient(#5a3f78, #35244a); }
+  .home-banner.news .hb-ico { animation: none; }
+  .home-banner.news .nb-dot { position: absolute; top: -5px; right: -5px; width: 14px; height: 14px; border-radius: 50%; background: var(--red); border: 2px solid #1a1a1a; animation: dotPulse 1.4s ease-in-out infinite; }
+  .home-banner.news .nb-new { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 6px; background: var(--red); color: #fff; font-size: 11px; vertical-align: 2px; }
+  .upd-list { max-height: min(56vh, 460px); overflow-y: auto; text-align: left; margin: 6px -4px 0; padding: 0 4px; }
+  .upd { background: rgba(0,0,0,.25); border-radius: 12px; padding: 10px 12px; margin-bottom: 8px; }
+  .upd-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .upd-head b { font-family: var(--title); font-size: 18px; color: var(--gold); letter-spacing: .5px; }
+  .upd-head .upd-date { margin-left: auto; font-size: 12px; font-weight: 700; color: var(--muted); }
+  .upd-head .upd-v { font-size: 11px; font-weight: 700; color: #fff; background: rgba(255,255,255,.12); padding: 0 6px; border-radius: 6px; }
+  .upd ul { margin: 6px 0 0; padding-left: 18px; font-size: 13px; line-height: 1.4; }
+  .upd li { margin: 3px 0; }
+  .upd.newest { box-shadow: inset 0 0 0 2px rgba(255,210,63,.55); }
   .home-banner.quests.ready { background: linear-gradient(#4f7a2c, #2f5418); animation: battleGlow 1.6s ease-in-out infinite; }
   .hq-list { text-align: left; margin-top: 6px; }
   .hq-row { display: flex; align-items: center; gap: 8px; padding: 5px 0; border-top: 1px solid rgba(255,255,255,.08); }
@@ -697,6 +710,7 @@
       </div>
       <button class="home-banner quests" id="homeQuests"></button>
       <button class="home-banner hidden" id="giftBanner"><span class="hb-ico">&#127873;</span><span class="hb-txt"><b>Free gift ready!</b>Grab your daily coins in the Shop.</span><span class="hb-go">&#10140;</span></button>
+      <button class="home-banner news" id="newsBanner"></button>
       <div class="home-deck" id="homeDeck"><div class="hd-head"><span>Your deck</span><button class="link-btn" id="editDeck">Edit &#10140;</button></div><div class="hd-cards" id="homeDeckCards"></div></div>
       <div class="hint center net-line" id="netText">Connecting...</div>
     </div>
@@ -781,14 +795,15 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/cards.js?v=46"></script>
-<script src="js/audio.js?v=46"></script>
-<script src="js/draw.js?v=46"></script>
-<script src="js/sim.js?v=46"></script>
-<script src="js/bot.js?v=46"></script>
-<script src="js/net.js?v=46"></script>
-<script src="js/progress.js?v=46"></script>
-<script src="js/chest.js?v=46"></script>
-<script src="js/main.js?v=46"></script>
+<script src="js/cards.js?v=47"></script>
+<script src="js/audio.js?v=47"></script>
+<script src="js/draw.js?v=47"></script>
+<script src="js/sim.js?v=47"></script>
+<script src="js/bot.js?v=47"></script>
+<script src="js/net.js?v=47"></script>
+<script src="js/progress.js?v=47"></script>
+<script src="js/chest.js?v=47"></script>
+<script src="js/updates.js?v=47"></script>
+<script src="js/main.js?v=47"></script>
 </body>
 </html>
