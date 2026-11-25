@@ -48,7 +48,14 @@ const Net = (() => {
       const from = String(msg.from || '').slice(0, 16);
       switch (msg.t) {
         case 'ping': conn.send({ t: 'pong', from: myName, info: Object.assign({}, myInfo, { fight: fighting || !!matchConn }) }); setTimeout(() => conn.close(), 500); break;
-        case 'friend': emit('friendRequest', from); conn.send({ t: 'ok' }); setTimeout(() => conn.close(), 500); break;
+        // friend request: the game answers right away with ok (already friends / you both added each other), wait (it's in their inbox) or no (they declined)
+        case 'friend': {
+          let r = 'wait';
+          emit('friendRequest', from, !!msg.fresh, v => { r = v; });
+          try { conn.send({ t: 'freply', from: myName, r }); } catch (e) {}
+          setTimeout(() => conn.close(), 500); break;
+        }
+        case 'friendOk': emit('friendOk', from); setTimeout(() => conn.close(), 500); break;
         case 'challenge': emit('challenge', from, conn, msg); break;
         default: if (conn === matchConn) emit('match', msg);
       }
@@ -85,11 +92,25 @@ const Net = (() => {
       conn.send({ t: 'ping', from: myName });
     });
   }
-  async function sendFriend(name) {
-    const conn = await connect(name);
+  // sends a friend request; resolves 'ok' | 'wait' | 'no', or null if their game isn't open
+  async function sendFriend(name, fresh) {
+    const conn = await connect(name, 6000);
+    if (!conn) return null;
+    return new Promise(resolve => {
+      const t = setTimeout(() => { resolve('wait'); try { conn.close(); } catch (e) {} }, 4000);
+      conn.on('data', m => {
+        if (m && m.t === 'freply') { clearTimeout(t); resolve(m.r === 'ok' || m.r === 'no' ? m.r : 'wait'); setTimeout(() => { try { conn.close(); } catch (e) {} }, 300); }
+        else if (m && m.t === 'ok') { clearTimeout(t); resolve('wait'); }   // an older version of the game
+      });
+      conn.send({ t: 'friend', from: myName, fresh: !!fresh });
+    });
+  }
+  // tells someone you accepted their request (if their game is closed, their next re-send finds out instead)
+  async function sendFriendOk(name) {
+    const conn = await connect(name, 6000);
     if (!conn) return false;
-    conn.send({ t: 'friend', from: myName });
-    setTimeout(() => { try { conn.close(); } catch (e) {} }, 3000);
+    conn.send({ t: 'friendOk', from: myName });
+    setTimeout(() => { try { conn.close(); } catch (e) {} }, 2000);
     return true;
   }
   // challenger side
@@ -118,6 +139,6 @@ const Net = (() => {
   function send(msg) { if (matchConn && matchConn.open) { try { matchConn.send(msg); } catch (e) {} } }
   function leaveMatch() { if (matchConn) { const c = matchConn; matchConn = null; try { c.send({ t: 'quit' }); } catch (e) {} setTimeout(() => { try { c.close(); } catch (e) {} }, 300); } }
 
-  return { start, stop, on, ping, sendFriend, challenge, cancelChallenge, accept, decline, send, leaveMatch,
+  return { start, stop, on, ping, sendFriend, sendFriendOk, challenge, cancelChallenge, accept, decline, send, leaveMatch,
     isReady: () => ready, isOnline: n => online[n.toLowerCase()], info: n => infos[n.toLowerCase()], setInfo: o => { myInfo = o; }, setFighting: v => { fighting = !!v; }, inMatch: () => !!matchConn, name: () => myName };
 })();

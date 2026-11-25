@@ -18,6 +18,9 @@
   let deck = decks[deckSlot];
   function saveDecks() { decks[deckSlot] = deck; store.set('decks', decks); store.set('deckSlot', deckSlot); store.set('deck', deck); }
   let friends = store.get('friends', []).filter(n => typeof n === 'string');
+  // friend requests: inReq = waiting for you to answer, sentReq = waiting for them, declinedReq = ones you said no to (their re-sends get "no")
+  const strs = a => (Array.isArray(a) ? a : []).filter(n => typeof n === 'string');
+  let inReq = strs(store.get('inReq', [])), sentReq = strs(store.get('sentReq', [])), declinedReq = strs(store.get('declinedReq', []));
   let netState = 'off'; // off | wait | on
   const P = () => Progress.get();
   function publishInfo() { Net.setInfo({ arena: Progress.arena() }); }
@@ -94,6 +97,7 @@
       if (!on && d) d.remove();
     };
     dot('shop', Progress.giftReady());
+    dot('friends', inReq.length > 0);
     dot('deck', [...Progress.unlocked()].some(id => { const c = Progress.upgradeCost(id); return c != null && P().coins >= c; }));
     const coins = String(P().coins), el = $('statCoins');
     if (el.textContent !== coins && el.textContent !== '0') { const pill = el.parentElement; pill.classList.remove('bump'); void pill.offsetWidth; pill.classList.add('bump'); }
@@ -599,12 +603,100 @@
 
   // ---------------- friends ----------------
   function saveFriends() { store.set('friends', friends); }
+  const same = (a, b) => a.toLowerCase() === b.toLowerCase();
+  const inList = (arr, n) => arr.some(x => same(x, n));
+  function saveReqs() { store.set('inReq', inReq); store.set('sentReq', sentReq); store.set('declinedReq', declinedReq); renderStats(); }
+  function dropReq(name) { inReq = inReq.filter(n => !same(n, name)); sentReq = sentReq.filter(n => !same(n, name)); saveReqs(); }
+  function validName(name, silent) {
+    if (!/^[A-Za-z0-9_]{3,16}$/.test(name)) { if (!silent) toast('Usernames are 3 to 16 letters, numbers or _'); return false; }
+    if (username && same(name, username)) { if (!silent) toast("That's you!"); return false; }
+    return true;
+  }
+  // you tap Add: send a request (it waits in "Sent requests" until they accept)
+  async function requestFriend(name) {
+    name = name.trim();
+    if (!validName(name)) return false;
+    if (inList(friends, name)) { toast('Already your friend'); return false; }
+    if (inList(inReq, name)) { acceptReq(inReq.find(n => same(n, name))); return true; }
+    if (inList(sentReq, name)) { toast(`You already sent ${name} a request`); return false; }
+    sentReq.push(name); saveReqs();
+    if (screen === 'friends') renderFriends();
+    if (!Net.isReady()) { toast(`Request saved. It sends to ${name} when you're online.`); return true; }
+    const r = await Net.sendFriend(name, true);
+    if (r === 'ok') friendAccepted(name);
+    else if (r === 'no') { dropReq(name); toast(`${name} didn't accept.`); if (screen === 'friends') renderFriends(); }
+    else toast(r === 'wait' ? `Friend request sent to ${name}!` : `Request saved. ${name} gets it next time they open the game.`);
+    return true;
+  }
+  function friendAccepted(name) {
+    if (!inList(sentReq, name) || inList(friends, name)) return;
+    addFriend(name, true); Sfx.play('ding'); toast(`${name} accepted your friend request!`);
+    if (screen === 'friends') setTimeout(pingFriends, 500);
+  }
+  function acceptReq(name) {
+    if (!addFriend(name, true)) { dropReq(name); return; }
+    declinedReq = declinedReq.filter(n => !same(n, name)); saveReqs();
+    if (Net.isReady()) Net.sendFriendOk(name);
+    toast(`${name} is now your friend!`);
+    if (screen === 'friends') { renderFriends(); pingFriends(); }
+  }
+  function declineReq(name) {
+    inReq = inReq.filter(n => !same(n, name));
+    if (!inList(declinedReq, name)) declinedReq.push(name);
+    saveReqs();
+    if (screen === 'friends') renderFriends();
+  }
+  // someone sent you a request: answer their game right away, then show it
+  Net.on('friendRequest', (from, fresh, reply) => {
+    if (!validName(from, true)) { reply('no'); return; }
+    if (inList(friends, from)) { reply('ok'); return; }
+    if (inList(sentReq, from)) { reply('ok'); addFriend(from, true); toast(`You and ${from} are now friends!`); return; }   // you both added each other
+    if (inList(declinedReq, from)) {
+      if (!fresh) { reply('no'); return; }
+      declinedReq = declinedReq.filter(n => !same(n, from));   // they tapped Add again: ask again
+    }
+    reply('wait');
+    if (!inList(inReq, from)) { inReq.push(from); saveReqs(); Sfx.play('ding'); }
+    if (!reqShown.has(from.toLowerCase())) reqQueue.push(from);
+    if (screen === 'friends') renderFriends();
+    flushReqPopups();
+  });
+  Net.on('friendOk', from => friendAccepted(from));
+  // the "Friend request" popup waits until you're in the menus with nothing else open
+  const reqQueue = [], reqShown = new Set();
+  async function flushReqPopups() {
+    while (reqQueue.length && !G && !modalResolve && MENU.includes(screen) && !opening && !document.querySelector('.chestfx:not(.hidden)')) {
+      const name = reqQueue.shift();
+      if (!inList(inReq, name) || reqShown.has(name.toLowerCase())) continue;
+      reqShown.add(name.toLowerCase());
+      const k = await modal(`<h3>Friend request</h3><div class="req-pop">${avatarHtml(name, true)}</div><p><b>${esc(name)}</b> wants to be your friend!</p>`,
+        [{ label: 'Decline', cls: 'gray' }, { label: 'Later', cls: 'blue' }, { label: 'Accept', cls: 'green' }]);
+      if (k === 2) acceptReq(name); else if (k === 0) declineReq(name);
+    }
+  }
+  setInterval(flushReqPopups, 1500);
+  // keep re-sending your requests so they arrive when the other person opens the game (and you hear back if they accepted)
+  let resending = false;
+  async function resendReqs() {
+    if (resending || !Net.isReady() || G || !sentReq.length) return;
+    resending = true;
+    for (const name of sentReq.slice()) {
+      if (G || !inList(sentReq, name)) continue;
+      const r = await Net.sendFriend(name, false);
+      if (r === 'ok') friendAccepted(name);
+      else if (r === 'no') { dropReq(name); if (screen === 'friends') renderFriends(); }
+    }
+    resending = false;
+  }
+  setInterval(resendReqs, 30000);
+  Net.on('status', on => { if (on) setTimeout(resendReqs, 3000); });
   function addFriend(name, silent) {
     name = name.trim();
     if (!/^[A-Za-z0-9_]{3,16}$/.test(name)) { if (!silent) toast('Usernames are 3 to 16 letters, numbers or _'); return false; }
     if (name.toLowerCase() === username.toLowerCase()) { if (!silent) toast("That's you!"); return false; }
     if (friends.some(f => f.toLowerCase() === name.toLowerCase())) { if (!silent) toast('Already your friend'); return false; }
     friends.push(name); saveFriends();
+    dropReq(name);
     if (screen === 'friends') renderFriends();
     return true;
   }
@@ -614,8 +706,31 @@
     $('myAvatar').outerHTML = avatarHtml(username || '?', true).replace('class="avatar big"', 'class="avatar big" id="myAvatar"');
     $('myArenaHint').textContent = `${ARENA_ICO} Arena ${Progress.arena() + 1} · ${netState === 'on' ? 'online' : 'offline'}`;
     $('friendCount').textContent = friends.length ? `${friends.filter(f => Net.isOnline(f) === true).length} online` : '';
+    const rb = $('reqBox'); rb.innerHTML = '';
+    if (inReq.length) {
+      rb.innerHTML = `<div class="label"><span>Friend requests</span><small>${inReq.length}</small></div>`;
+      inReq.forEach(name => {
+        const row = document.createElement('div'); row.className = 'friend req';
+        row.innerHTML = `${avatarHtml(name)}<div class="f-txt"><b></b><span class="req-tag">Wants to be your friend</span></div><button class="small-btn green">Accept</button><button class="icon-btn" title="Decline">&#10005;</button>`;
+        row.querySelector('.f-txt b').textContent = name;
+        row.children[2].onclick = () => { Sfx.init(); Sfx.play('tick'); acceptReq(name); };
+        row.children[3].onclick = () => { Sfx.play('tick'); declineReq(name); };
+        rb.appendChild(row);
+      });
+    }
+    const sb = $('sentBox'); sb.innerHTML = '';
+    if (sentReq.length) {
+      sb.innerHTML = '<div class="label"><span>Sent requests</span></div>';
+      sentReq.forEach(name => {
+        const row = document.createElement('div'); row.className = 'friend sent';
+        row.innerHTML = `${avatarHtml(name)}<div class="f-txt"><b></b><span>Waiting for them to accept...</span></div><button class="icon-btn" title="Cancel request">&#10005;</button>`;
+        row.querySelector('.f-txt b').textContent = name;
+        row.children[2].onclick = () => { sentReq = sentReq.filter(n => !same(n, name)); saveReqs(); renderFriends(); };
+        sb.appendChild(row);
+      });
+    }
     const list = $('friendList'); list.innerHTML = '';
-    if (!friends.length) list.innerHTML = '<div class="empty-state"><span class="es-ico">\u{1F465}</span><b>No friends yet</b>Type a friend\'s username above and tap Add.<br>Send them yours so they can add you back!</div>';
+    if (!friends.length) list.innerHTML = '<div class="empty-state"><span class="es-ico">\u{1F465}</span><b>No friends yet</b>Type a friend\'s username above and tap Add.<br>They get a friend request, and show up here once they accept.</div>';
     friends.forEach(name => {
       const on = Net.isOnline(name), info = Net.info(name);
       const row = document.createElement('div'); row.className = 'friend';
@@ -633,25 +748,21 @@
       list.appendChild(row);
     });
     const rl = $('recentList'); rl.innerHTML = '';
-    const rec = (P().recent || []).filter(n => !friends.some(f => f.toLowerCase() === n.toLowerCase()));
+    const rec = (P().recent || []).filter(n => !inList(friends, n) && !inList(sentReq, n) && !inList(inReq, n));
     if (!rec.length) rl.innerHTML = '<div class="hint">People you battle show up here so you can add them.</div>';
     rec.forEach(name => {
       const row = document.createElement('div'); row.className = 'friend';
       row.innerHTML = `${avatarHtml(name)}<div class="f-txt"><b></b><span>Played recently</span></div><button class="small-btn green">+ Add</button>`;
       row.querySelector('.f-txt b').textContent = name;
-      row.querySelector('button').onclick = () => { if (addFriend(name)) { Net.sendFriend(name); toast(`Added ${name}`); renderFriends(); } };
+      row.querySelector('button').onclick = () => { Sfx.init(); requestFriend(name); };
       rl.appendChild(row);
     });
   }
   $('addBtn').onclick = async () => {
     const name = $('addName').value.trim();
-    if (!addFriend(name)) return;
-    $('addName').value = '';
-    if (Net.isReady()) {
-      const ok = await Net.sendFriend(name);
-      toast(ok ? `Added ${name}! They got a friend request.` : `Added ${name}. They're offline right now.`);
-      pingFriends();
-    } else toast(`Added ${name}.`);
+    if (!name) return;
+    Sfx.init();
+    if (await requestFriend(name)) $('addName').value = '';
   };
   $('addName').onkeydown = e => { if (e.key === 'Enter') $('addBtn').click(); };
   Net.on('presence', () => { if (screen === 'friends') renderFriends(); });
@@ -664,13 +775,6 @@
   }
   setInterval(() => { if (screen === 'friends') pingFriends(); }, 20000);
 
-  Net.on('friendRequest', async from => {
-    if (!/^[A-Za-z0-9_]{3,16}$/.test(from)) return;
-    if (friends.some(f => f.toLowerCase() === from.toLowerCase())) return;
-    if (G) { addFriend(from, true); return; }
-    const k = await modal(`<h3>Friend request</h3><p><b>${esc(from)}</b> added you as a friend. Add them back?</p>`, [{ label: 'No thanks', cls: 'gray' }, { label: 'Add', cls: 'green' }]);
-    if (k === 1) { addFriend(from, true); toast(`${from} is now your friend`); }
-  });
 
   // ---------------- new version check ----------------
   // the game's version is the ?v= on its own script tag; version.json on the site says what's newest

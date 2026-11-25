@@ -340,6 +340,10 @@
   #tabbar button.on::before { content: ''; position: absolute; top: 0; left: 18%; right: 18%; height: 3px; border-radius: 0 0 3px 3px; background: var(--gold); }
   #tabbar button.on span { transform: translateY(-2px) scale(1.15); }
   #tabbar button span { transition: transform .15s; }
+  .friend.req { background: linear-gradient(90deg, rgba(255,210,63,.18), rgba(255,255,255,.04)); box-shadow: inset 0 0 0 2px rgba(255,210,63,.55); }
+  .friend.sent { opacity: .8; }
+  .friend .req-tag { color: var(--gold); font-weight: 700; }
+  .req-pop { display: flex; justify-content: center; margin: 4px 0 2px; }
   .tab-dot { position: absolute; top: 5px; left: calc(50% + 8px); width: 11px; height: 11px; border-radius: 50%; background: var(--red); border: 2px solid #1a1a1a; animation: dotPulse 1.4s ease-in-out infinite; }
   @keyframes dotPulse { 50% { transform: scale(1.25); } }
   .pill { box-shadow: inset 0 -2px 0 rgba(0,0,0,.25); }
@@ -731,8 +735,10 @@
     <div class="scroll pad">
       <div class="me-card"><div class="avatar big" id="myAvatar">?</div><div class="me-txt"><small>Your username</small><b id="myNameHint"></b><span id="myArenaHint"></span></div><button class="small-btn gray" id="copyName">Copy</button></div>
       <div class="add-row"><input type="text" id="addName" placeholder="Add a friend by username" maxlength="16" autocomplete="off" autocapitalize="off"><button class="small-btn green" id="addBtn">Add</button></div>
+      <div id="reqBox"></div>
       <div class="label"><span>Your friends</span></div>
       <div id="friendList"></div>
+      <div id="sentBox"></div>
       <div class="label"><span>Recent opponents</span></div>
       <div id="recentList"></div>
     </div>
@@ -775,14 +781,14 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/cards.js?v=45"></script>
-<script src="js/audio.js?v=45"></script>
-<script src="js/draw.js?v=45"></script>
-<script src="js/sim.js?v=45"></script>
-<script src="js/bot.js?v=45"></script>
-<script src="js/net.js?v=45"></script>
-<script src="js/progress.js?v=45"></script>
-<script src="js/chest.js?v=45"></script>
-<script src="js/main.js?v=45"></script>
+<script src="js/cards.js?v=46"></script>
+<script src="js/audio.js?v=46"></script>
+<script src="js/draw.js?v=46"></script>
+<script src="js/sim.js?v=46"></script>
+<script src="js/bot.js?v=46"></script>
+<script src="js/net.js?v=46"></script>
+<script src="js/progress.js?v=46"></script>
+<script src="js/chest.js?v=46"></script>
+<script src="js/main.js?v=46"></script>
 </body>
 </html>
