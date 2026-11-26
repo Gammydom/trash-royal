@@ -2,6 +2,12 @@
 // Every time an update is pushed live, add a new entry at the TOP with the version (the ?v= number),
 // the date it went out (YYYY-MM-DD), a short title and plain bullet points.
 const UPDATES = [
+  { v: 51, date: '2026-11-26', title: 'Fresh start + accounts', notes: [
+    'Fresh start! Everyone\'s game was reset, and the leaderboard starts over. Good luck!',
+    'You can now set a password for your account (⚙ Settings → Protect my account).',
+    'Then your game saves online, and you can log in on any phone or browser and keep everything.',
+    'New phone? On the first screen, tap "I already have an account".',
+  ] },
   { v: 50, date: '2026-11-26', title: 'Gigachad music', notes: [
     'When Orville turns into Gigachad Orville, his own song kicks in and plays through phase 2.',
   ] },

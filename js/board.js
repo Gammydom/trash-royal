@@ -4,7 +4,7 @@
 // The others send it their copy about once a minute and get the merged board back.
 // When the keeper closes, the next online game takes over. Newest numbers win for each player.
 const Board = (() => {
-  const KEEPER = 'trashroyal-v1-board-keeper';
+  const KEEPER = 'trashroyal-v1-board-keeper-2';   // "-2": the fresh start on Nov 26 2026 began a brand-new board
   const MAX = 500;                 // the board keeps the best 500 players
   const SYNC_MS = 60000;
   let store = null, getMe = null, isBusy = () => false;

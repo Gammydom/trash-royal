@@ -7,6 +7,17 @@
     get(k, d) { try { const v = localStorage.getItem(SP + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
     set(k, v) { try { localStorage.setItem(SP + k, JSON.stringify(v)); } catch (e) {} },
   };
+  // one-time fresh start (Erick, Nov 26 2026, with the login update): wipes this device's game once.
+  // Only the sound / music volume settings are kept. Raise FRESH to wipe everyone again some day.
+  const FRESH = 1;
+  if ((store.get('fresh', 0) | 0) < FRESH) {
+    const keep = new Set(['muted', 'sound_vol', 'music_vol']), drop = [];
+    try {
+      for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i); if (k && k.startsWith(SP) && !keep.has(k.slice(SP.length))) drop.push(k); }
+      drop.forEach(k => localStorage.removeItem(k));
+    } catch (e) {}
+    store.set('fresh', FRESH);
+  }
   Progress.init(store);
   const validDeck = d => Array.isArray(d) && d.length === 8 && new Set(d).size === 8 && d.every(id => DEFS[id] && DEFS[id].cost);
   let username = store.get('name', '');
@@ -25,6 +36,7 @@
   const strs = a => (Array.isArray(a) ? a : []).filter(n => typeof n === 'string');
   let inReq = strs(store.get('inReq', [])), sentReq = strs(store.get('sentReq', [])), declinedReq = strs(store.get('declinedReq', []));
   let netState = 'off'; // off | wait | on
+  let acctReady = false;  // the login system has loaded
   const P = () => Progress.get();
   // leaderboards (declared up here so the home screen can use them right away)
   let friendInfo = store.get('friendInfo', {}); if (!friendInfo || typeof friendInfo !== 'object') friendInfo = {};
@@ -106,6 +118,8 @@
     };
     dot('shop', Progress.giftReady());
     dot('friends', inReq.length > 0);
+    { const g = $('btnSettings'), d = g && g.querySelector('.nb-dot'), want = !!username && acctReady && !Account.loggedIn();
+      if (want && !d) g.insertAdjacentHTML('beforeend', '<i class="nb-dot"></i>'); if (!want && d) d.remove(); }
     try { renderNews(); } catch (e) {}   // (the updates code may not be set up yet on the very first call)
     dot('deck', [...Progress.unlocked()].some(id => { const c = Progress.upgradeCost(id); return c != null && P().coins >= c; }));
     const coins = String(P().coins), el = $('statCoins');
@@ -389,8 +403,10 @@
     const p = modal(`<h3>Settings</h3><p>Signed in as <b>${esc(username)}</b></p>
       <div class="vols">${slider('volSound', '\u{1F50A}', 'Sound', Sfx.soundVol())}${slider('volMusic', '\u{1F3B5}', 'Music', Music.vol())}</div>
       ${Sfx.isMuted() ? '<p class="hint">Sound is muted. Move a slider to turn it back on.</p>' : ''}
-      <p>${P().wins} wins, ${P().losses} losses vs the CPU<br>Reached: Arena ${Progress.arena() + 1}, ${esc(ARENAS[Progress.arena()].name)}</p>`,
+      <p>${P().wins} wins, ${P().losses} losses vs the CPU<br>Reached: Arena ${Progress.arena() + 1}, ${esc(ARENAS[Progress.arena()].name)}</p>
+      ${acctBoxHtml()}`,
       [{ label: 'Change name', cls: 'blue' }, { label: 'Close', cls: 'green' }]);
+    wireAcctBox();
     const hookSlider = (id, set) => {
       const r = $(id);
       r.oninput = () => {
@@ -402,11 +418,116 @@
     hookSlider('volMusic', v => Music.setVol(v));
     $('volSound').onchange = () => Sfx.play('pop');   // a sample at the new volume
     const k = await p;
-    if (k === 0) askName(true);
+    if (k === 0) {
+      if (Account.loggedIn()) { toast("Your name is your login, so it can't change once your account is protected."); return; }
+      askName(true);
+    }
   };
+
+  // ---------------- account (optional login) ----------------
+  function acctBoxHtml() {
+    if (!acctReady) return '<div class="acct-box"><small>Account system is loading...</small></div>';
+    if (Account.loggedIn()) return `<div class="acct-box safe"><b class="t">\u2705 Account protected</b><small>Log in on any device with <b>${esc(username || Account.loginName())}</b> + your password. Your game saves online.</small>
+      <div class="acct-btns"><button class="small-btn gray" id="acctOut">Log out</button></div></div>`;
+    return `<div class="acct-box risk"><b class="t">\u26A0\uFE0F Your account isn't protected</b><small>If you clear your browser or switch phones, your progress is gone. Set a password to keep it safe.</small>
+      <div class="acct-btns"><button class="small-btn gold" id="acctProtect">\u{1F512} Protect my account</button><button class="small-btn blue" id="acctIn">Log in</button></div></div>`;
+  }
+  function wireAcctBox() {
+    const on = (id, f) => { const b = $(id); if (b) b.onclick = () => { closeModal(); f(); }; };
+    on('acctProtect', protectFlow); on('acctIn', () => loginFlow()); on('acctOut', logoutFlow);
+  }
+  // set a password for the name you already play with
+  async function protectFlow() {
+    let err = '';
+    while (true) {
+      let pw = '', pw2 = '';
+      const grab = () => { pw = ($('pwIn') || {}).value || ''; pw2 = ($('pwIn2') || {}).value || ''; };
+      const p = modal(`<h3>\u{1F512} Protect your account</h3><p>Pick a password for <b>${esc(username)}</b>. Then you can log in on any phone or browser and keep everything.</p>
+        ${err ? `<p class="err">${esc(err)}</p>` : ''}
+        <form class="pw-form" onsubmit="return false"><input type="text" autocomplete="username" value="${esc(username)}" hidden>
+        <input type="password" id="pwIn" placeholder="Password (6+ characters)" autocomplete="new-password" maxlength="72">
+        <input type="password" id="pwIn2" placeholder="Type it again" autocomplete="new-password" maxlength="72"></form>
+        <p class="hint">There's no email, so there's no way to reset a forgotten password in the game. Keep it somewhere safe!</p>`,
+        [{ label: 'Cancel', cls: 'gray' }, { label: 'Protect it', cls: 'green', keep: grab }]);
+      setTimeout(() => { const i = $('pwIn'); if (i) i.focus(); }, 50);
+      if (await p === 0) return;
+      if (pw.length < 6) { err = 'Use at least 6 characters.'; continue; }
+      if (pw !== pw2) { err = "The two passwords don't match."; continue; }
+      toast('Protecting your account...');
+      const r = await Account.signUp(username, pw);
+      if (r.ok) { Sfx.play('win'); renderStats(); await modal(`<h3>\u2705 Account protected!</h3><p>Your game now saves online. On a new phone or browser, tap <b>Log in</b> and use <b>${esc(username)}</b> + your password.</p>`, [{ label: 'Nice!', cls: 'green' }]); return; }
+      err = r.err === 'taken' ? `Someone already protected the name "${username}". Change your name in Settings first.`
+        : r.err === 'weak' ? (r.msg || 'Pick a stronger password.')
+        : r.err === 'confirm' ? "Couldn't finish: email confirmation is still turned on in Supabase."
+        : r.err === 'offline' ? "Couldn't reach the account server. Check your internet."
+        : (r.msg || 'Something went wrong. Try again.');
+    }
+  }
+  // log in to an account (on a new device, or to switch accounts)
+  async function loginFlow(fromStart) {
+    let err = '', nm = fromStart ? '' : username;
+    while (true) {
+      let pw = '';
+      const grab = () => { nm = (($('liName') || {}).value || '').trim(); pw = ($('liPw') || {}).value || ''; };
+      const p = modal(`<h3>Log in</h3><p>Use the name and password you protected your account with.</p>
+        ${err ? `<p class="err">${esc(err)}</p>` : ''}
+        <form class="pw-form" onsubmit="return false"><input type="text" id="liName" placeholder="Username" autocomplete="username" autocapitalize="off" maxlength="16" value="${esc(nm)}">
+        <input type="password" id="liPw" placeholder="Password" autocomplete="current-password" maxlength="72"></form>`,
+        [{ label: 'Back', cls: 'gray' }, { label: 'Log in', cls: 'green', keep: grab }]);
+      setTimeout(() => { const i = nm ? $('liPw') : $('liName'); if (i) i.focus(); const w = $('liPw'); if (w) w.onkeydown = e => { if (e.key === 'Enter') $('modalBtns').lastChild.click(); }; }, 50);
+      if (await p === 0) return false;
+      if (!/^[A-Za-z0-9_]{3,16}$/.test(nm) || !pw) { err = 'Type your username and password.'; continue; }
+      toast('Logging in...');
+      const r = await Account.signIn(nm, pw);
+      if (!r.ok) {
+        err = r.err === 'wrong' ? 'Wrong username or password.' : r.err === 'confirm' ? "Couldn't log in: email confirmation is still turned on in Supabase."
+          : r.err === 'offline' ? "Couldn't reach the account server. Check your internet." : (r.msg || 'Something went wrong. Try again.');
+        continue;
+      }
+      // this device already has its own progress under another name: make sure that's OK to replace
+      const hasOwn = username && username.toLowerCase() !== nm.toLowerCase() && (Progress.arena() > 0 || (P().wins | 0) > 0);
+      if (hasOwn) {
+        const k = await modal(`<h3>Replace this device's game?</h3><p>This device has <b>${esc(username)}</b> (Arena ${Progress.arena() + 1}). Logging in as <b>${esc(nm)}</b> replaces it here.</p>`,
+          [{ label: 'Cancel', cls: 'gray' }, { label: 'Log in', cls: 'green' }]);
+        if (k !== 1) { await Account.signOut(); return false; }
+      }
+      if (r.data) Account.apply(r.data, r.at);
+      else { store.set('name', nm); await Account.push(true); }   // a login with no saved game yet: start it from this device
+      toast('Logged in! Loading your account...');
+      Net.stop();
+      setTimeout(() => location.reload(), 600);
+      return true;
+    }
+  }
+  async function logoutFlow() {
+    const k = await modal(`<h3>Log out?</h3><p>Your account stays saved online. This device goes back to a fresh start, and you can log in again any time.</p>`,
+      [{ label: 'Stay', cls: 'gray' }, { label: 'Log out', cls: 'red' }]);
+    if (k !== 1) return;
+    await Account.push(true);
+    await Account.signOut();
+    Account.apply({}, null);
+    Net.stop();
+    location.reload();
+  }
+  // keep the online save up to date, and pick up progress made on another device
+  async function syncDown() {
+    if (!Account.loggedIn() || G) return;
+    const row = await Account.newerSave();
+    if (row && !G) { Account.apply(row.data, row.updated_at); Net.stop(); location.reload(); }
+  }
+  Account.init(SP).then(async ok => {
+    acctReady = ok; renderStats();
+    if (ok && Account.loggedIn()) { await syncDown(); Account.push(); }
+  });
+  setInterval(() => { if (Account.loggedIn() && !G) Account.push(); }, 20000);
+  document.addEventListener('visibilitychange', () => {
+    if (!Account.loggedIn()) return;
+    if (document.hidden) Account.push(); else syncDown();
+  });
 
   // ---------------- username ----------------
   async function askName(change) {
+    if (change && Account.loggedIn()) { toast("Your name is your login, so it can't change once your account is protected."); return; }
     let err = '';
     while (true) {
       const html = `<h3>${change ? 'New username' : 'Pick a username'}</h3>
@@ -415,9 +536,13 @@
         <div class="row" style="margin-top:10px"><input type="text" id="nameIn" maxlength="16" autocomplete="off" autocapitalize="off" value="${esc(username)}"></div>`;
       let typed = '';
       const grab = () => { typed = (($('nameIn') || {}).value || '').trim(); };
-      const p = modal(html, change ? [{ label: 'Cancel', cls: 'gray' }, { label: 'Save', cls: 'green', keep: grab }] : [{ label: "Let's go!", cls: 'green', keep: grab }]);
+      const p = modal(html + (change ? '' : '<button class="link-btn under" id="haveAcct">I already have an account \u2192 Log in</button>'),
+        change ? [{ label: 'Cancel', cls: 'gray' }, { label: 'Save', cls: 'green', keep: grab }] : [{ label: "Let's go!", cls: 'green', keep: grab }]);
+      const ha = $('haveAcct');
+      if (ha) ha.onclick = () => { const res = modalResolve; closeModal(); if (res) res('login'); };
       setTimeout(() => { const i = $('nameIn'); if (i) { i.focus(); i.onkeydown = e => { if (e.key === 'Enter') $('modalBtns').lastChild.click(); }; } }, 50);
       const pick = await p;
+      if (pick === 'login') { if (await loginFlow(true)) await new Promise(() => {}); continue; }   // (a good login reloads the game)
       if (change && pick === 0) return;
       if (!/^[A-Za-z0-9_]{3,16}$/.test(typed)) { err = 'Use 3 to 16 letters, numbers or _'; continue; }
       if (change && typed.toLowerCase() === username.toLowerCase() && Net.isReady()) { username = typed; store.set('name', username); renderStats(); return; }

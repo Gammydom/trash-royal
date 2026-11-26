@@ -65,7 +65,7 @@
   .friend { display: flex; align-items: center; gap: 10px; background: var(--panel); border: 3px solid #1a1a1a; border-radius: 14px; padding: 10px 12px; margin-bottom: 8px; }
   .friend .fn { flex: 1; font-weight: 700; font-size: 17px; overflow: hidden; text-overflow: ellipsis; }
   .row { display: flex; gap: 8px; }
-  input[type=text] { flex: 1; min-width: 0; font-family: var(--ui); font-size: 17px; padding: 10px 12px; border-radius: 12px; border: 3px solid #1a1a1a; background: #fff8e7; color: #1a1a1a; }
+  input[type=text], input[type=password] { flex: 1; min-width: 0; font-family: var(--ui); font-size: 17px; padding: 10px 12px; border-radius: 12px; border: 3px solid #1a1a1a; background: #fff8e7; color: #1a1a1a; }
 
   /* ---------- game ---------- */
   #game { background: #1d1c19; }
@@ -619,6 +619,17 @@
   #home .home-deck { padding: 10px 12px 14px; }
   #home .home-deck .hd-cards { gap: 6px; }
   #newsBtn { position: relative; }
+  #btnSettings { position: relative; }
+  #btnSettings .nb-dot { position: absolute; top: -5px; right: -5px; width: 12px; height: 12px; border-radius: 50%; background: var(--red); border: 2px solid #1a1a1a; animation: dotPulse 1.4s ease-in-out infinite; }
+  .acct-box { margin: 10px 0 4px; padding: 10px 12px; border-radius: 12px; background: rgba(0,0,0,.25); text-align: center; }
+  .acct-box.safe { box-shadow: inset 0 0 0 2px rgba(139,211,70,.55); }
+  .acct-box.risk { box-shadow: inset 0 0 0 2px rgba(255,210,63,.6); }
+  .acct-box b.t { display: block; font-size: 15px; margin-bottom: 2px; }
+  .acct-box small { display: block; color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  .acct-box .acct-btns { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .pw-form { display: flex; flex-direction: column; gap: 8px; margin-top: 10px; }
+  .pw-form input { width: 100%; box-sizing: border-box; }
+  .link-btn.under { display: block; margin: 10px auto 0; }
   @media (max-width: 440px) {
     #statbar { gap: 5px; padding-left: 8px; padding-right: 8px; }
     #statbar .pill { padding: 4px 8px; font-size: 14px; gap: 4px; }
@@ -855,16 +866,18 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/cards.js?v=50"></script>
-<script src="js/audio.js?v=50"></script>
-<script src="js/draw.js?v=50"></script>
-<script src="js/sim.js?v=50"></script>
-<script src="js/bot.js?v=50"></script>
-<script src="js/net.js?v=50"></script>
-<script src="js/progress.js?v=50"></script>
-<script src="js/chest.js?v=50"></script>
-<script src="js/board.js?v=50"></script>
-<script src="js/updates.js?v=50"></script>
-<script src="js/main.js?v=50"></script>
+<script src="js/cards.js?v=51"></script>
+<script src="js/audio.js?v=51"></script>
+<script src="js/draw.js?v=51"></script>
+<script src="js/sim.js?v=51"></script>
+<script src="js/bot.js?v=51"></script>
+<script src="js/net.js?v=51"></script>
+<script src="js/progress.js?v=51"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="js/account.js?v=51"></script>
+<script src="js/chest.js?v=51"></script>
+<script src="js/board.js?v=51"></script>
+<script src="js/updates.js?v=51"></script>
+<script src="js/main.js?v=51"></script>
 </body>
 </html>
