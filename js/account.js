@@ -17,7 +17,7 @@ const Account = (() => {
     if (ready) return ready;
     ready = (async () => {
       if (!window.supabase || !window.supabase.createClient) return false;
-      sb = window.supabase.createClient(URL, KEY, { auth: { storageKey: SP + 'auth', persistSession: true, autoRefreshToken: true } });
+      sb = window.supabase.createClient(URL, KEY, { auth: { storageKey: SP + 'auth', persistSession: true, autoRefreshToken: true }, realtime: { params: { eventsPerSecond: 40 } } });
       const { data } = await sb.auth.getSession();
       session = data && data.session;
       sb.auth.onAuthStateChange((ev, s) => { session = s; });
@@ -179,6 +179,6 @@ const Account = (() => {
   async function accept(id) { if (!session) return false; const { error } = await sb.from('friendships').update({ status: 'accepted' }).eq('id', id); return !error; }
   async function removeFriendship(id) { if (!session) return false; const { error } = await sb.from('friendships').delete().eq('id', id); return !error; }
 
-  return { init, loggedIn, loginName, signUp, signIn, push, newerSave, apply, signOut,
+  return { client: () => sb, whenReady: () => ready || Promise.resolve(false), init, loggedIn, loginName, signUp, signIn, push, newerSave, apply, signOut,
     myId, nameOwner, profileByName, saveProfile, top, boardCount, rankOf, friendships, sendRequest, accept, removeFriendship };
 })();

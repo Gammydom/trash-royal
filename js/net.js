@@ -1,5 +1,7 @@
 // Trash Royal - online play. Phones talk straight to each other using PeerJS
 // (a free public matchmaking server only introduces them).
+// When that direct link can't get through (e.g. two different networks), the same messages go through
+// a Supabase Realtime relay instead: every online player listens on their own "inbox" channel there.
 const Net = (() => {
   const PREFIX = 'trashroyal-v1-';
   let peer = null, myName = '', ready = false;
@@ -10,6 +12,72 @@ const Net = (() => {
   let matchConn = null;
 
   function idFor(name) { return PREFIX + name.toLowerCase(); }
+  const testRelayOnly = /[?&]relay=1/.test(location.search);   // test switch: skip the direct link to try the relay
+
+  // ---------------- the relay (Supabase Realtime broadcast) ----------------
+  // A relay connection acts like a PeerJS connection: send(), on('data'|'close'|'open'|'error'), close(), .open
+  const hasAcct = () => typeof Account !== 'undefined' && !!Account.client;   // (Account is a top-level const, so it isn't on window)
+  const sbc = () => hasAcct() ? Account.client() : null;
+  function relayConn(room) {
+    const sb = sbc(); if (!sb) return null;
+    const h = {}, fire = (ev, a) => (h[ev] || []).forEach(f => { try { f(a); } catch (e) { console.error(e); } });
+    let done = false;
+    const ch = sb.channel('trm-' + room, { config: { broadcast: { self: false, ack: false } } });
+    const conn = {
+      open: false, relay: true,
+      on(ev, f) { (h[ev] = h[ev] || []).push(f); },
+      send(m) { if (conn.open) { try { ch.send({ type: 'broadcast', event: 'm', payload: m }); } catch (e) {} } },
+      close() { if (done) return; try { ch.send({ type: 'broadcast', event: 'x', payload: {} }); } catch (e) {} finish(); },
+    };
+    function finish() { if (done) return; done = true; conn.open = false; setTimeout(() => { try { sb.removeChannel(ch); } catch (e) {} }, 400); fire('close'); }
+    ch.on('broadcast', { event: 'm' }, ({ payload }) => fire('data', payload));
+    ch.on('broadcast', { event: 'x' }, () => finish());
+    conn.ready = new Promise(res => {
+      const t = setTimeout(() => res(false), 8000);
+      ch.subscribe(st => {
+        if (st === 'SUBSCRIBED') { clearTimeout(t); conn.open = true; fire('open'); res(true); }
+        else if (st === 'CHANNEL_ERROR' || st === 'TIMED_OUT' || st === 'CLOSED') { clearTimeout(t); if (conn.open) finish(); res(false); }
+      });
+    });
+    return conn;
+  }
+  // your inbox: other players "knock" here with a room name, then you both meet in that room
+  let inbox = null, inboxFor = '';
+  async function listenRelay(name) {
+    const key = name.toLowerCase();
+    if (inboxFor === key && inbox) return;
+    stopRelay();
+    if (hasAcct()) await Account.whenReady();
+    const sb = sbc(); if (!sb || myName.toLowerCase() !== key) return;
+    inboxFor = key;
+    inbox = sb.channel('tri-' + key, { config: { broadcast: { self: false } } });
+    inbox.on('broadcast', { event: 'knock' }, async ({ payload }) => {
+      if (!payload || typeof payload.room !== 'string' || !/^[a-z0-9]{8,40}$/.test(payload.room)) return;
+      const conn = relayConn(payload.room); if (!conn) return;
+      if (!(await conn.ready)) return;
+      wire(conn);
+      conn.send({ t: '__hi', from: myName });
+    });
+    inbox.subscribe();
+  }
+  function stopRelay() { const sb = sbc(); if (inbox && sb) { try { sb.removeChannel(inbox); } catch (e) {} } inbox = null; inboxFor = ''; }
+  // knock on someone's inbox and wait for them to join the room: a connection, or null
+  async function relayConnect(key, timeoutMs = 6000) {
+    const sb = sbc(); if (!sb) return null;
+    const room = (crypto.randomUUID ? crypto.randomUUID().replace(/-/g, '') : Math.random().toString(36).slice(2) + Date.now().toString(36)).slice(0, 24);
+    const conn = relayConn(room); if (!conn) return null;
+    if (!(await conn.ready)) { conn.close(); return null; }
+    const hi = new Promise(res => { conn.on('data', m => { if (m && m.t === '__hi') res(true); }); setTimeout(() => res(false), timeoutMs); });
+    const door = sb.channel('tri-' + key, { config: { broadcast: { self: false } } });
+    const knocked = await new Promise(res => {
+      const t = setTimeout(() => res(false), 5000);
+      door.subscribe(st => { if (st === 'SUBSCRIBED') { clearTimeout(t); door.send({ type: 'broadcast', event: 'knock', payload: { from: myName, room } }).then(() => res(true), () => res(false)); } });
+    });
+    setTimeout(() => { try { sb.removeChannel(door); } catch (e) {} }, 1500);
+    if (!knocked || !(await hi)) { conn.close(); return null; }
+    wire(conn);
+    return conn;
+  }
   function emit(ev, ...args) { (handlers[ev] || []).forEach(f => { try { f(...args); } catch (e) { console.error(e); } }); }
   function on(ev, f) { (handlers[ev] = handlers[ev] || []).push(f); }
 
@@ -18,6 +86,7 @@ const Net = (() => {
       if (typeof Peer === 'undefined') { resolve({ ok: false, why: 'offline' }); return; }
       stop();
       myName = name;
+      listenRelay(name);
       let settled = false;
       const done = r => { if (!settled) { settled = true; resolve(r); } };
       try { peer = new Peer(idFor(name), { debug: 0 }); }
@@ -40,7 +109,7 @@ const Net = (() => {
       setTimeout(() => done({ ok: false, why: 'offline' }), 12000);
     });
   }
-  function stop() { if (peer) { try { peer.destroy(); } catch (e) {} } peer = null; ready = false; }
+  function stop() { if (peer) { try { peer.destroy(); } catch (e) {} } peer = null; ready = false; stopRelay(); }
 
   function wire(conn) {
     conn.on('data', msg => {
@@ -64,7 +133,11 @@ const Net = (() => {
     conn.on('error', () => {});
   }
 
-  function connect(name, timeoutMs = 7000) { return connectId(idFor(name.toLowerCase()), timeoutMs); }
+  async function connect(name, timeoutMs = 5000) {
+    const key = name.toLowerCase();
+    const direct = testRelayOnly ? null : await connectId(idFor(key), timeoutMs);
+    return direct || relayConnect(key);
+  }
   // connect to any online ID (a player, or the leaderboard keeper)
   function connectId(id, timeoutMs = 7000) {
     return new Promise(resolve => {
@@ -141,6 +214,6 @@ const Net = (() => {
   function send(msg) { if (matchConn && matchConn.open) { try { matchConn.send(msg); } catch (e) {} } }
   function leaveMatch() { if (matchConn) { const c = matchConn; matchConn = null; try { c.send({ t: 'quit' }); } catch (e) {} setTimeout(() => { try { c.close(); } catch (e) {} }, 300); } }
 
-  return { start, stop, on, ping, connectId, sendFriend, sendFriendOk, challenge, cancelChallenge, accept, decline, send, leaveMatch,
+  return { relayState: () => ({ inboxFor, inbox: inbox ? inbox.state : null, myName }), start, stop, on, ping, connectId, sendFriend, sendFriendOk, challenge, cancelChallenge, accept, decline, send, leaveMatch,
     isReady: () => ready, isOnline: n => online[n.toLowerCase()], info: n => infos[n.toLowerCase()], setInfo: o => { myInfo = o; }, setFighting: v => { fighting = !!v; }, inMatch: () => !!matchConn, name: () => myName };
 })();
