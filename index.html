@@ -607,6 +607,9 @@
   /* home: more room to breathe on phones */
   #home .home-scroll { gap: 16px; padding: 18px 18px 26px; }
   #home .home-row { width: min(420px, 100%); gap: 12px; }
+  /* nothing on home squashes to fit a short window: the page scrolls instead */
+  #home .home-scroll > * { flex-shrink: 0; }
+  #home .big-btn.battle { width: min(420px, 100%); }
   .home-tiles { display: flex; gap: 12px; width: min(420px, 100%); }
   .home-tiles .home-banner { flex: 1; width: auto; min-width: 0; flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px 12px 12px; }
   .home-tiles .home-banner.hidden { display: none; }
@@ -852,16 +855,16 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/cards.js?v=48"></script>
-<script src="js/audio.js?v=48"></script>
-<script src="js/draw.js?v=48"></script>
-<script src="js/sim.js?v=48"></script>
-<script src="js/bot.js?v=48"></script>
-<script src="js/net.js?v=48"></script>
-<script src="js/progress.js?v=48"></script>
-<script src="js/chest.js?v=48"></script>
-<script src="js/board.js?v=48"></script>
-<script src="js/updates.js?v=48"></script>
-<script src="js/main.js?v=48"></script>
+<script src="js/cards.js?v=49"></script>
+<script src="js/audio.js?v=49"></script>
+<script src="js/draw.js?v=49"></script>
+<script src="js/sim.js?v=49"></script>
+<script src="js/bot.js?v=49"></script>
+<script src="js/net.js?v=49"></script>
+<script src="js/progress.js?v=49"></script>
+<script src="js/chest.js?v=49"></script>
+<script src="js/board.js?v=49"></script>
+<script src="js/updates.js?v=49"></script>
+<script src="js/main.js?v=49"></script>
 </body>
 </html>

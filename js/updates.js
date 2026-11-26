@@ -2,6 +2,10 @@
 // Every time an update is pushed live, add a new entry at the TOP with the version (the ?v= number),
 // the date it went out (YYYY-MM-DD), a short title and plain bullet points.
 const UPDATES = [
+  { v: 49, date: '2026-11-26', title: 'Home screen fix', notes: [
+    'The arena picture on the home screen no longer gets squashed flat on short screens.',
+    'The BATTLE! button is now as wide as the buttons under it.',
+  ] },
   { v: 48, date: '2026-11-26', title: 'Leaderboards', notes: [
     'New Ranks button in the bottom bar: an Everyone leaderboard and a Friends leaderboard.',
     'The Everyone board is passed between players\' games, so it fills in as people come online.',
