@@ -2,6 +2,9 @@
 // Every time an update is pushed live, add a new entry at the TOP with the version (the ?v= number),
 // the date it went out (YYYY-MM-DD), a short title and plain bullet points.
 const UPDATES = [
+  { v: 50, date: '2026-11-26', title: 'Gigachad music', notes: [
+    'When Orville turns into Gigachad Orville, his own song kicks in and plays through phase 2.',
+  ] },
   { v: 49, date: '2026-11-26', title: 'Home screen fix', notes: [
     'The arena picture on the home screen no longer gets squashed flat on short screens.',
     'The BATTLE! button is now as wide as the buttons under it.',

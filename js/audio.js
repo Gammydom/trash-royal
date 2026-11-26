@@ -216,10 +216,11 @@ const Sfx = (() => {
 // (match music comes later). It runs through the same volume/mute as the sounds, so it
 // also behaves on iPhones (which ignore audio.volume).
 const Music = (() => {
-  const TRACKS = { menu: 'music/menu.mp3?v=1' };
+  // gigachad: Erick's pick for Gigachad Orville's phase 2 (see the vault: a copyrighted song he chose to use anyway)
+  const TRACKS = { menu: 'music/menu.mp3?v=1', gigachad: 'music/gigachad.mp3?v=1' };
   let vol = 30;                          // Settings slider, 0-100; starts at 30%, then whatever the player saved
   try { const v = parseInt(localStorage.getItem('tr_music_vol'), 10); if (v >= 0 && v <= 100) vol = v; } catch (e) {}
-  let el = null, gain = null, want = null, pauseT = 0;
+  let el = null, gain = null, want = null, pauseT = 0, fadeIn = 0.8;
   function hook() {
     if (gain) return true;
     const a = Sfx.audio();
@@ -238,9 +239,9 @@ const Music = (() => {
     g.cancelScheduledValues(t); g.setValueAtTime(g.value, t);
     clearTimeout(pauseT);
     if (audible()) {
-      if (el.dataset.track !== want) { el.src = TRACKS[want]; el.dataset.track = want; }
+      if (el.dataset.track !== want) { el.src = TRACKS[want]; el.dataset.track = want; g.setValueAtTime(0, t); }
       if (el.paused) { const p = el.play(); if (p && p.catch) p.catch(() => {}); }
-      g.linearRampToValueAtTime(vol / 100, t + (quick ? 0.05 : 0.8));
+      g.linearRampToValueAtTime(vol / 100, t + (quick ? 0.05 : fadeIn)); fadeIn = 0.8;
     } else {
       g.linearRampToValueAtTime(0, t + 0.5);
       pauseT = setTimeout(() => { if (!audible()) el.pause(); }, 550);   // keeps its place for next time
@@ -248,7 +249,8 @@ const Music = (() => {
   }
   document.addEventListener('visibilitychange', () => sync());
   return {
-    play(name) { want = name; sync(); },
+    play(name, fade) { if (fade > 0) fadeIn = fade; want = name; sync(); },
+    url: name => TRACKS[name],
     stop() { want = null; sync(); },
     hold(ms) { if (isFinite(ms) && ms > 0) holdUntil = Math.max(holdUntil, performance.now() + Math.min(ms, 10000)); },
     setVol(v) { vol = Math.max(0, Math.min(100, Math.round(v))); try { localStorage.setItem('tr_music_vol', String(vol)); } catch (e) {} sync(true); },

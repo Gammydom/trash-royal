@@ -1002,7 +1002,8 @@
     const botLv = {}; botDeck.forEach(id => botLv[id] = lvl);
     G = newMatch('cpu', `${ar.cpu} (Lv ${lvl})`, ai);
     G.boss = [null, ar.boss && BOSSES[ar.boss] ? ar.boss : null];     // the arena's boss stands where their house was
-    G.sim = new Sim([deck, botDeck], { levels: [myLevels(), botLv], towerLevel: [Progress.kingLevel(deck), lvl], boss: G.boss, phase2: ar.boss === 'orville' ? 'orville2' : null });   // the CPU fills energy exactly like you; harder arenas = better cards, levels and play
+    G.sim = new Sim([deck, botDeck], { levels: [myLevels(), botLv], towerLevel: [Progress.kingLevel(deck), lvl], boss: G.boss, phase2: ar.boss === 'orville' ? 'orville2' : null });
+    if (ar.boss === 'orville') prefetchGigachad();   // the CPU fills energy exactly like you; harder arenas = better cards, levels and play
     G.bot = new Bot(G.sim, 1, { react: ar.react, skill: ar.skill, defend: ar.defend, daze: ar.daze });   // early arenas: CPUs that miss your troops and zone out
     enterGame();
   }
@@ -1017,6 +1018,7 @@
     const mode = MODES.find(m => m.id === info.mode) || MODES[0];
     G = newMatch(role, oppName, info.arena);
     G.modeName = mode.name;
+    if (info.raidBoss === 'orville') prefetchGigachad();
     if (mode.raid) {   // Boss Raid: you and your friend share side 0 against a boss, his towers and a CPU
       const bid = okBoss(info.raidBoss), bi = BOSS_IDS.indexOf(bid), ai = Math.max(0, ARENAS.findIndex(a => a.boss === bid)), ar = ARENAS[ai];
       G.coop = true; G.me = 0; G.slot = role === 'guest' ? 2 : 0; G.mateName = oppName; G.raidBi = bi;
@@ -1094,6 +1096,7 @@
     { t: "There's-", cls: 'l1', ms: 75 }, { t: ' n.. no way...', cls: 'l2', ms: 120 },
     { t: ' I can be', cls: 'l3', ms: 80 }, { t: ' DEFEATED THIS EASILY!!', cls: 'l4', ms: 55 },
   ];
+  function prefetchGigachad() { try { fetch(Music.url('gigachad')).catch(() => {}); } catch (e) {} }
   function startCutscene(ev) {
     if (!G || G.cut) return;
     G.cut = { t: 0, x: ev.x, y: ev.y, boss: ev.boss || 'orville2', revealed: false, typed: 0, flashed: false };
@@ -1133,7 +1136,7 @@
     const cx = VW / 2, cy = VH * 0.42;
     const k = (z - 1) / 1.25;   // slide the focus to the middle of the screen as we zoom
     const px = fx + (cx - fx) * k, py = fy + (cy - fy) * k;
-    if (t > 6 && !c.dlgOut) { c.dlgOut = true; $('cutText').classList.add('out'); }
+    if (t > 6 && !c.dlgOut) { c.dlgOut = true; $('cutText').classList.add('out'); Music.play('gigachad', 2.8); }
     if (t > 8.85 && !c.flashed) { c.flashed = true; const f = $('cutFlash'); f.classList.add('go'); Sfx.play('boom'); G.shake = Math.max(G.shake, 1); }
     if (t > 9.0 && !c.revealed) { c.revealed = true; G.boss[1] = c.boss; Sfx.play('horn'); banner('GIGACHAD ORVILLE!', 1500);
       G.oppName = String(G.oppName).replace('Orville', BOSSES[c.boss].name); $('oppName').textContent = G.oppName; }
