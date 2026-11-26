@@ -604,6 +604,49 @@
   .deck-tab.on { color: #fff; background: linear-gradient(#fff3a0, #ffd23f 40%, #f0a020); color: #3a2400; -webkit-text-stroke: 0; transform: translateY(-2px); box-shadow: inset 0 2px 0 rgba(255,255,255,.6), 0 5px 0 var(--outline, #14120f); }
   /* daily quests on the home screen */
   .home-banner.quests { background: linear-gradient(#3a4a63, #232d3d); }
+  /* home: more room to breathe on phones */
+  #home .home-scroll { gap: 16px; padding: 18px 18px 26px; }
+  #home .home-row { width: min(420px, 100%); gap: 12px; }
+  .home-tiles { display: flex; gap: 12px; width: min(420px, 100%); }
+  .home-tiles .home-banner { flex: 1; width: auto; min-width: 0; flex-direction: column; align-items: flex-start; gap: 4px; padding: 10px 12px 12px; }
+  .home-tiles .home-banner.hidden { display: none; }
+  .home-tiles .home-banner .hb-ico { font-size: 26px; }
+  .home-tiles .home-banner .hb-go { display: none; }
+  .home-tiles .home-banner .hb-txt b { font-size: 15px; }
+  #home .home-deck { padding: 10px 12px 14px; }
+  #home .home-deck .hd-cards { gap: 6px; }
+  #newsBtn { position: relative; }
+  @media (max-width: 440px) {
+    #statbar { gap: 5px; padding-left: 8px; padding-right: 8px; }
+    #statbar .pill { padding: 4px 8px; font-size: 14px; gap: 4px; }
+    #statbar .pill .ico { font-size: 13px; }
+    #statbar .icon-btn { width: 32px; height: 32px; font-size: 15px; }
+  }
+  #newsBtn .nb-dot { position: absolute; top: -5px; right: -5px; width: 12px; height: 12px; border-radius: 50%; background: var(--red); border: 2px solid #1a1a1a; animation: dotPulse 1.4s ease-in-out infinite; }
+  #tabbar button { min-width: 0; }
+  #ranks .lb-tabs { margin: 4px 0 6px; }
+  #ranks .lb-hint { margin-bottom: 10px; }
+  #ranks .lb-list { max-height: none; overflow: visible; margin: 0; padding: 0; }
+  #ranks .lb-row { padding: 9px 12px; margin-bottom: 8px; border: 2px solid #1a1a1a; }
+  #ranks .lb-row .avatar { width: 36px; height: 36px; font-size: 16px; }
+  #ranks .lb-row .lb-name { font-size: 16px; }
+  #ranks .lb-me { text-align: center; margin: 4px 0 12px; }
+  .lb-tabs { display: flex; gap: 6px; margin: 6px 0 8px; }
+  .lb-tabs button { flex: 1; font-family: var(--title); font-size: 16px; letter-spacing: .5px; padding: 8px 4px 6px; border-radius: 10px; border: 3px solid #1a1a1a; background: #3a372f; color: var(--muted); cursor: pointer; }
+  .lb-tabs button.on { background: var(--gold); color: #3a2400; }
+  .lb-list { max-height: min(52vh, 440px); overflow-y: auto; text-align: left; margin: 0 -4px; padding: 0 4px; }
+  .lb-row { display: flex; align-items: center; gap: 8px; background: rgba(0,0,0,.25); border-radius: 10px; padding: 6px 10px; margin-bottom: 5px; }
+  .lb-row.me { box-shadow: inset 0 0 0 2px var(--gold); background: rgba(255,210,63,.14); }
+  .lb-row .lb-rank { width: 30px; text-align: center; font-family: var(--title); font-size: 16px; color: var(--muted); flex: none; }
+  .lb-row .lb-rank.medal { font-size: 22px; }
+  .lb-row .avatar { width: 30px; height: 30px; font-size: 14px; flex: none; }
+  .lb-row .lb-name { flex: 1; min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .lb-row .lb-name small { display: block; font-weight: 600; font-size: 11px; color: var(--muted); }
+  .lb-row .lb-ar { font-size: 12px; font-weight: 700; background: rgba(255,255,255,.1); padding: 2px 7px; border-radius: 8px; white-space: nowrap; }
+  .lb-row .lb-w { width: 58px; text-align: right; font-family: var(--title); font-size: 15px; color: var(--gold); white-space: nowrap; }
+  .lb-row .lb-w small { font-family: var(--ui); font-size: 10px; color: var(--muted); }
+  .lb-me { margin-top: 8px; font-weight: 700; }
+  .lb-empty { padding: 18px 8px; text-align: center; color: var(--muted); }
   .home-banner.news { position: relative; background: linear-gradient(#5a3f78, #35244a); }
   .home-banner.news .hb-ico { animation: none; }
   .home-banner.news .nb-dot { position: absolute; top: -5px; right: -5px; width: 14px; height: 14px; border-radius: 50%; background: var(--red); border: 2px solid #1a1a1a; animation: dotPulse 1.4s ease-in-out infinite; }
@@ -689,6 +732,7 @@
     <div class="pill"><span id="netDot" class="dot"></span><b id="homeName">...</b></div>
     <div class="pill"><span class="ico">&#127967;&#65039;</span><b id="statTrophies">Arena 1</b></div>
     <div class="pill"><span class="ico">&#129689;</span><b id="statCoins">0</b></div>
+    <button class="icon-btn" id="newsBtn" title="Updates">&#128240;</button>
     <button class="icon-btn" id="btnSettings">&#9881;</button>
   </div>
 
@@ -708,9 +752,10 @@
         <button class="big-btn blue half" id="btnFriendsHome">vs Friend</button>
         <button class="big-btn gray half" id="btnPractice">Practice</button>
       </div>
-      <button class="home-banner quests" id="homeQuests"></button>
-      <button class="home-banner hidden" id="giftBanner"><span class="hb-ico">&#127873;</span><span class="hb-txt"><b>Free gift ready!</b>Grab your daily coins in the Shop.</span><span class="hb-go">&#10140;</span></button>
-      <button class="home-banner news" id="newsBanner"></button>
+      <div class="home-tiles">
+        <button class="home-banner quests" id="homeQuests"></button>
+        <button class="home-banner hidden" id="giftBanner"><span class="hb-ico">&#127873;</span><span class="hb-txt"><b>Free gift!</b>Grab it in the Shop</span></button>
+      </div>
       <div class="home-deck" id="homeDeck"><div class="hd-head"><span>Your deck</span><button class="link-btn" id="editDeck">Edit &#10140;</button></div><div class="hd-cards" id="homeDeckCards"></div></div>
       <div class="hint center net-line" id="netText">Connecting...</div>
     </div>
@@ -743,6 +788,17 @@
     <div class="scroll pad" id="arenaList"></div>
   </section>
 
+  <!-- LEADERBOARD -->
+  <section id="ranks" class="screen hidden menu">
+    <div class="head"><h2><span class="h-ico">&#127942;</span>Leaderboard</h2><span id="rankCount" class="head-pill"></span></div>
+    <div class="scroll pad">
+      <div class="lb-tabs"><button data-t="everyone">&#127758; Everyone</button><button data-t="friends">&#128101; Friends</button></div>
+      <div class="hint center lb-hint">Highest arena first, then most wins</div>
+      <div class="lb-list" id="lbList"></div>
+      <div class="lb-me" id="lbMe"></div>
+    </div>
+  </section>
+
   <!-- FRIENDS -->
   <section id="friends" class="screen hidden menu">
     <div class="head"><h2><span class="h-ico">&#128101;</span>Friends</h2><span id="friendCount" class="head-pill"></span></div>
@@ -765,6 +821,7 @@
     <button data-tab="home" class="mid"><span>&#9876;&#65039;</span>Battle</button>
     <button data-tab="friends"><span>&#128101;</span>Friends</button>
     <button data-tab="arenas"><span>&#127967;&#65039;</span>Arenas</button>
+    <button data-tab="ranks"><span>&#127942;</span>Ranks</button>
   </nav>
 
   <!-- GAME -->
@@ -795,15 +852,16 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/peerjs@1.5.4/dist/peerjs.min.js"></script>
-<script src="js/cards.js?v=47"></script>
-<script src="js/audio.js?v=47"></script>
-<script src="js/draw.js?v=47"></script>
-<script src="js/sim.js?v=47"></script>
-<script src="js/bot.js?v=47"></script>
-<script src="js/net.js?v=47"></script>
-<script src="js/progress.js?v=47"></script>
-<script src="js/chest.js?v=47"></script>
-<script src="js/updates.js?v=47"></script>
-<script src="js/main.js?v=47"></script>
+<script src="js/cards.js?v=48"></script>
+<script src="js/audio.js?v=48"></script>
+<script src="js/draw.js?v=48"></script>
+<script src="js/sim.js?v=48"></script>
+<script src="js/bot.js?v=48"></script>
+<script src="js/net.js?v=48"></script>
+<script src="js/progress.js?v=48"></script>
+<script src="js/chest.js?v=48"></script>
+<script src="js/board.js?v=48"></script>
+<script src="js/updates.js?v=48"></script>
+<script src="js/main.js?v=48"></script>
 </body>
 </html>

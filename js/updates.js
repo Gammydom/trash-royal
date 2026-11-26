@@ -2,6 +2,13 @@
 // Every time an update is pushed live, add a new entry at the TOP with the version (the ?v= number),
 // the date it went out (YYYY-MM-DD), a short title and plain bullet points.
 const UPDATES = [
+  { v: 48, date: '2026-11-26', title: 'Leaderboards', notes: [
+    'New Ranks button in the bottom bar: an Everyone leaderboard and a Friends leaderboard.',
+    'The Everyone board is passed between players\' games, so it fills in as people come online.',
+    'Ranked by the highest arena you\'ve reached, then by total wins.',
+    'Wins against friends and Boss Raid wins now count too (from today on). Practice doesn\'t count.',
+    'Roomier home screen: quests and the free gift sit side by side, and Updates moved to the 📰 button at the top.',
+  ] },
   { v: 47, date: '2026-11-25', title: 'Updates log', notes: [
     'New Updates button on the home screen: see every update and the day it came out.',
     'After each update, a "What\'s new" popup shows you what changed (just once).',

@@ -117,9 +117,9 @@ const Progress = (() => {
     save();
     return { coins, newArena };
   }
-  function friendResult(won) { S.coins += won ? 10 : 3; save(); return won ? 10 : 3; }
+  function friendResult(won) { if (won) S.fwins = (S.fwins | 0) + 1; S.coins += won ? 10 : 3; save(); return won ? 10 : 3; }
   // Boss Raid: more coins for tougher bosses (bi = boss step 0..6)
-  function raidResult(won, bi) { const c = won ? 30 + 15 * Math.max(0, bi | 0) : 5; S.coins += c; save(); return c; }
+  function raidResult(won, bi) { if (won) S.rwins = (S.rwins | 0) + 1; const c = won ? 30 + 15 * Math.max(0, bi | 0) : 5; S.coins += c; save(); return c; }
   function addRecent(name) { S.recent = [name].concat(S.recent.filter(n => n.toLowerCase() !== name.toLowerCase())).slice(0, 6); save(); }
   // ---- shop ----
   function giftReady() { return S.lastGift !== today(); }

@@ -27,7 +27,7 @@ const Net = (() => {
         const t = err && err.type;
         if (t === 'unavailable-id') { done({ ok: false, why: 'taken' }); return; }
         if (t === 'peer-unavailable') {
-          const m = /trashroyal-v1-([a-z0-9_]+)/.exec(err.message || '');
+          const m = /trashroyal-v1-([a-z0-9_-]+)/.exec(err.message || '');
           if (m) { online[m[1]] = false; emit('presence'); emit('unreachable', m[1]); }
           return;
         }
@@ -64,12 +64,14 @@ const Net = (() => {
     conn.on('error', () => {});
   }
 
-  function connect(name, timeoutMs = 7000) {
+  function connect(name, timeoutMs = 7000) { return connectId(idFor(name.toLowerCase()), timeoutMs); }
+  // connect to any online ID (a player, or the leaderboard keeper)
+  function connectId(id, timeoutMs = 7000) {
     return new Promise(resolve => {
       if (!peer || !ready) { resolve(null); return; }
-      const key = name.toLowerCase();
+      const key = id.slice(PREFIX.length);
       let conn;
-      try { conn = peer.connect(idFor(key), { serialization: 'json', reliable: true }); } catch (e) { resolve(null); return; }
+      try { conn = peer.connect(id, { serialization: 'json', reliable: true }); } catch (e) { resolve(null); return; }
       if (!conn) { resolve(null); return; }
       let done = false;
       const fin = v => { if (!done) { done = true; off(); resolve(v); } };
@@ -88,7 +90,7 @@ const Net = (() => {
     if (!conn) { online[key] = false; emit('presence'); return false; }
     return new Promise(resolve => {
       const t = setTimeout(() => { online[key] = false; emit('presence'); resolve(false); try { conn.close(); } catch (e) {} }, 4000);
-      conn.on('data', m => { if (m && m.t === 'pong') { clearTimeout(t); online[key] = true; if (m.info && typeof m.info === 'object') infos[key] = { arena: +m.info.arena || 0, fight: !!m.info.fight }; emit('presence'); resolve(true); } });
+      conn.on('data', m => { if (m && m.t === 'pong') { clearTimeout(t); online[key] = true; if (m.info && typeof m.info === 'object') infos[key] = { arena: +m.info.arena || 0, fight: !!m.info.fight, wins: m.info.wins == null ? null : (+m.info.wins || 0) }; emit('presence'); resolve(true); } });
       conn.send({ t: 'ping', from: myName });
     });
   }
@@ -139,6 +141,6 @@ const Net = (() => {
   function send(msg) { if (matchConn && matchConn.open) { try { matchConn.send(msg); } catch (e) {} } }
   function leaveMatch() { if (matchConn) { const c = matchConn; matchConn = null; try { c.send({ t: 'quit' }); } catch (e) {} setTimeout(() => { try { c.close(); } catch (e) {} }, 300); } }
 
-  return { start, stop, on, ping, sendFriend, sendFriendOk, challenge, cancelChallenge, accept, decline, send, leaveMatch,
+  return { start, stop, on, ping, connectId, sendFriend, sendFriendOk, challenge, cancelChallenge, accept, decline, send, leaveMatch,
     isReady: () => ready, isOnline: n => online[n.toLowerCase()], info: n => infos[n.toLowerCase()], setInfo: o => { myInfo = o; }, setFighting: v => { fighting = !!v; }, inMatch: () => !!matchConn, name: () => myName };
 })();

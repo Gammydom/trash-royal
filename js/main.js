@@ -26,7 +26,11 @@
   let inReq = strs(store.get('inReq', [])), sentReq = strs(store.get('sentReq', [])), declinedReq = strs(store.get('declinedReq', []));
   let netState = 'off'; // off | wait | on
   const P = () => Progress.get();
-  function publishInfo() { Net.setInfo({ arena: Progress.arena() }); }
+  // leaderboards (declared up here so the home screen can use them right away)
+  let friendInfo = store.get('friendInfo', {}); if (!friendInfo || typeof friendInfo !== 'object') friendInfo = {};
+  let lbTab = 'everyone', myRank = 0;
+  const totalWins = () => (P().wins | 0) + (P().fwins | 0) + (P().rwins | 0);   // CPU + friend battle + Boss Raid wins (not Practice)
+  function publishInfo() { Net.setInfo({ arena: Progress.arena(), wins: totalWins() }); }
   publishInfo();
 
   // ---------------- small UI helpers ----------------
@@ -70,7 +74,7 @@
 
   // ---------------- screens ----------------
   let screen = 'loading';
-  const MENU = ['home', 'deck', 'shop', 'arenas', 'friends'];
+  const MENU = ['home', 'deck', 'shop', 'arenas', 'friends', 'ranks'];
   function show(id) {
     document.querySelectorAll('.screen').forEach(s => s.classList.toggle('hidden', s.id !== id));
     screen = id;
@@ -85,6 +89,7 @@
     if (id === 'shop') renderShop();
     if (id === 'arenas') renderArenas();
     if (id === 'friends') { renderFriends(); pingFriends(); }
+    if (id === 'ranks') { renderBoardBanner(); fillBoard(); if (lbTab === 'friends') pingFriends(); else Board.sync(); }
   }
   document.querySelectorAll('#tabbar button').forEach(b => b.onclick = () => { Sfx.init(); Sfx.play('tick'); swapPick = null; show(b.dataset.tab); });
 
@@ -101,6 +106,7 @@
     };
     dot('shop', Progress.giftReady());
     dot('friends', inReq.length > 0);
+    try { renderNews(); } catch (e) {}   // (the updates code may not be set up yet on the very first call)
     dot('deck', [...Progress.unlocked()].some(id => { const c = Progress.upgradeCost(id); return c != null && P().coins >= c; }));
     const coins = String(P().coins), el = $('statCoins');
     if (el.textContent !== coins && el.textContent !== '0') { const pill = el.parentElement; pill.classList.remove('bump'); void pill.offsetWidth; pill.classList.add('bump'); }
@@ -276,7 +282,7 @@
     const box = $('homeQuests'); if (!box) return;
     const qs = Progress.quests(), done = qs.filter(q => q.prog >= q.goal).length, ready = Progress.questReady();
     box.classList.toggle('ready', ready);
-    box.innerHTML = `<span class="hb-ico">\u{1F4DC}</span><span class="hb-txt"><b>Daily quests ${done}/3</b>${ready ? 'A reward is ready to claim!' : `New quests in ${Math.ceil(Progress.msToMidnight() / 3600000)}h`}</span><span class="hb-go">\u2192</span>`;
+    box.innerHTML = `<span class="hb-ico">\u{1F4DC}</span><span class="hb-txt"><b>Quests ${done}/3</b>${ready ? 'Reward ready!' : `New in ${Math.ceil(Progress.msToMidnight() / 3600000)}h`}</span><span class="hb-go">\u2192</span>`;
   }
   function questsModal() {
     const p = modal(`<h3>\u{1F4DC} Daily quests</h3><p>New quests in ${Math.ceil(Progress.msToMidnight() / 3600000)}h</p><div class="hq-list" id="hqList"></div>`, [{ label: 'Close', cls: 'gray' }]);
@@ -292,22 +298,72 @@
   }
   $('homeQuests').onclick = () => { Sfx.init(); Sfx.play('tick'); questsModal(); };
 
+  // ---------------- leaderboards ----------------
+  // ranked by highest arena reached, then total wins
+  // the Everyone board is passed along between players' games (see board.js)
+  Board.start(store, () => username ? { name: username, arena: Progress.arena(), wins: totalWins() } : null, () => !!G);
+  function pushBoard() { if (username) { Board.touch(); myRank = Board.rank(); } }
+  setTimeout(pushBoard, 1000);
+  setInterval(() => { if (!G) pushBoard(); }, 15000);
+  Board.onChange(() => { myRank = Board.rank(); if (screen === 'ranks') { renderBoardBanner(); if (lbTab === 'everyone') fillBoard(); } });
+  // the pill in the Leaderboard screen's header: your place
+  function renderBoardBanner() {
+    const n = Board.list().length;
+    $('rankCount').textContent = myRank && n ? `You: #${myRank} of ${n}` : '';
+  }
+  const medal = i => i < 3 ? ['\u{1F947}', '\u{1F948}', '\u{1F949}'][i] : '';
+  function lbRow(r, i, sub) {
+    const me = username && r.name.toLowerCase() === username.toLowerCase();
+    if (me) sub = 'You';
+    return `<div class="lb-row${me ? ' me' : ''}"><span class="lb-rank${i < 3 ? ' medal' : ''}">${medal(i) || i + 1}</span>${avatarHtml(r.name)}
+      <span class="lb-name">${esc(r.name)}${sub ? `<small>${esc(sub)}</small>` : ''}</span>
+      <span class="lb-ar">${ARENA_ICO} ${(r.arena | 0) + 1}</span><span class="lb-w">${r.wins | 0} <small>wins</small></span></div>`;
+  }
+  const byRank = (a, b) => (b.arena - a.arena) || (b.wins - a.wins) || a.name.localeCompare(b.name);
+  async function fillBoard() {
+    const list = $('lbList'); if (!list || screen !== 'ranks') return;
+    document.querySelectorAll('.lb-tabs button').forEach(b => b.classList.toggle('on', b.dataset.t === lbTab));
+    const meRow = { name: username || 'You', arena: Progress.arena(), wins: totalWins() };
+    if (lbTab === 'friends') {
+      const known = [meRow], unknown = [];
+      friends.forEach(f => {
+        const live = Net.info(f), bd = Board.byName(f), c = live && live.wins != null ? { arena: live.arena | 0, wins: live.wins | 0 } : friendInfo[f.toLowerCase()] || (bd && { arena: bd.arena, wins: bd.wins });
+        if (c) known.push({ name: f, arena: c.arena, wins: c.wins, on: Net.isOnline(f) === true }); else unknown.push(f);
+      });
+      known.sort(byRank);
+      list.innerHTML = known.map((r, i) => lbRow(r, i, r === meRow ? '' : r.on ? 'Online' : 'Last seen')).join('') +
+        (unknown.length ? `<div class="lb-empty">Waiting to hear from: ${unknown.map(esc).join(', ')}<br>They show up once they're online with the new version.</div>` : '') +
+        (!friends.length ? '<div class="lb-empty">Add friends in the Friends tab to race them here!</div>' : '');
+      $('lbMe').textContent = '';
+      return;
+    }
+    pushBoard();
+    const rows = Board.list(), shown = rows.slice(0, 100);
+    list.innerHTML = (shown.length ? shown.map((r, i) => lbRow(r, i)).join('') : '<div class="lb-empty">Nobody on the board yet!</div>') +
+      `<div class="lb-empty">${rows.length} player${rows.length === 1 ? '' : 's'} so far. The board fills in as players come online.</div>`;
+    const inTop = myRank && myRank <= 100;
+    $('lbMe').innerHTML = myRank && !inTop ? `You: <b>#${myRank}</b> · Arena ${Progress.arena() + 1} · ${totalWins()} wins` : '';
+  }
+  document.querySelectorAll('#ranks .lb-tabs button').forEach(b => b.onclick = () => { Sfx.init(); Sfx.play('tick'); lbTab = b.dataset.t; fillBoard(); if (lbTab === 'friends') pingFriends(); else Board.sync(); });
+
   // ---------------- updates log ----------------
   const fmtDate = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); };
   const unreadNews = () => store.get('seenUpdate', 0) < LATEST.v;
   function renderNews() {
-    const b = $('newsBanner'); if (!b) return;
-    const un = unreadNews();
-    b.innerHTML = `<span class="hb-ico">\u{1F4F0}</span><span class="hb-txt"><b>Updates${un ? '<span class="nb-new">NEW</span>' : ''}</b>Latest: ${esc(LATEST.title)} · ${fmtDate(LATEST.date)}</span><span class="hb-go">\u2192</span>${un ? '<i class="nb-dot"></i>' : ''}`;
+    const b = $('newsBtn'); if (!b) return;
+    const un = unreadNews(), d = b.querySelector('.nb-dot');
+    if (un && !d) b.insertAdjacentHTML('beforeend', '<i class="nb-dot"></i>');
+    if (!un && d) d.remove();
+    b.title = `Updates · latest: ${LATEST.title}, ${fmtDate(LATEST.date)}`;
   }
   const updHtml = (u, i) => `<div class="upd${i === 0 ? ' newest' : ''}"><div class="upd-head"><b>${esc(u.title)}</b><span class="upd-v">v${u.v}</span><span class="upd-date">${fmtDate(u.date)}</span></div>
     <ul>${u.notes.map(n => `<li>${esc(n)}</li>`).join('')}</ul></div>`;
-  function markNewsSeen() { store.set('seenUpdate', LATEST.v); if (screen === 'home') renderNews(); }
+  function markNewsSeen() { store.set('seenUpdate', LATEST.v); renderNews(); }
   async function updatesModal() {
     markNewsSeen();
     await modal(`<h3>\u{1F4F0} Updates</h3><p>Everything that's changed, newest first.</p><div class="upd-list">${UPDATES.map(updHtml).join('')}</div>`, [{ label: 'Close', cls: 'green' }]);
   }
-  $('newsBanner').onclick = () => { Sfx.init(); Sfx.play('tick'); updatesModal(); };
+  $('newsBtn').onclick = () => { Sfx.init(); Sfx.play('tick'); updatesModal(); };
   // the first time you open a new version: show what's new, once
   async function maybeWhatsNew() {
     if (!unreadNews() || !username || G || modalResolve || screen !== 'home' || opening) return;
@@ -794,7 +850,14 @@
     if (await requestFriend(name)) $('addName').value = '';
   };
   $('addName').onkeydown = e => { if (e.key === 'Enter') $('addBtn').click(); };
-  Net.on('presence', () => { if (screen === 'friends') renderFriends(); });
+  Net.on('presence', () => {
+    // remember each friend's last arena + wins, so the Friends leaderboard still shows them when they're offline
+    let changed = false;
+    friends.forEach(f => { const i = Net.info(f); if (i && i.wins != null) { friendInfo[f.toLowerCase()] = { arena: i.arena | 0, wins: i.wins | 0 }; changed = true; } });
+    if (changed) store.set('friendInfo', friendInfo);
+    if (screen === 'friends') renderFriends();
+    if (screen === 'ranks' && lbTab === 'friends') fillBoard();
+  });
   let pinging = false;
   async function pingFriends() {
     if (pinging || !Net.isReady() || G) return;
@@ -1253,10 +1316,10 @@
       publishInfo();
       rewards = `<div class="res-reward"><span class="res-chip">${COIN} +${res.coins}</span></div>` + (res.newArena >= 0 ? `<div class="res-unlock">\u{1F513} You beat ${esc(ARENAS[ai].name)}! ${esc(ARENAS[res.newArena].name)} unlocked!</div>` : '');
     } else if (G.coop) {
-      const c = Progress.raidResult(won, G.raidBi);
+      const c = Progress.raidResult(won, G.raidBi); publishInfo();
       rewards = `<div class="res-reward"><span class="res-chip">${COIN} +${c}</span></div>` + (won ? `<div class="res-unlock">\u{1F91D} You and ${esc(G.mateName)} beat ${esc(opp)}!</div>` : '');
     } else if (mode === 'host' || mode === 'guest') {
-      const c = Progress.friendResult(won);
+      const c = Progress.friendResult(won); publishInfo();
       rewards = `<div class="res-reward"><span class="res-chip">${COIN} +${c}</span></div>`;
     }
     // daily quests (Practice doesn't count)
