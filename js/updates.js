@@ -2,6 +2,11 @@
 // Every time an update is pushed live, add a new entry at the TOP with the version (the ?v= number),
 // the date it went out (YYYY-MM-DD), a short title and plain bullet points.
 const UPDATES = [
+  { v: 52, date: '2026-11-26', title: 'Better friends + leaderboard', notes: [
+    'Protected accounts now share one real Everyone leaderboard, always up to date.',
+    'Friends who both protected their accounts: requests wait until you see them, your friends list follows you to any device, and you always see their arena, wins and online / In fight status.',
+    'Protected names are reserved, so nobody can pretend to be you.',
+  ] },
   { v: 51, date: '2026-11-26', title: 'Fresh start + accounts', notes: [
     'Fresh start! Everyone\'s game was reset, and the leaderboard starts over. Good luck!',
     'You can now set a password for your account (⚙ Settings → Protect my account).',

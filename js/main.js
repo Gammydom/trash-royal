@@ -37,6 +37,7 @@
   let inReq = strs(store.get('inReq', [])), sentReq = strs(store.get('sentReq', [])), declinedReq = strs(store.get('declinedReq', []));
   let netState = 'off'; // off | wait | on
   let acctReady = false;  // the login system has loaded
+  let dbRows = [];        // database friends + requests (protected accounts), see the friends section
   const P = () => Progress.get();
   // leaderboards (declared up here so the home screen can use them right away)
   let friendInfo = store.get('friendInfo', {}); if (!friendInfo || typeof friendInfo !== 'object') friendInfo = {};
@@ -100,8 +101,8 @@
     if (id === 'deck') renderDeck();
     if (id === 'shop') renderShop();
     if (id === 'arenas') renderArenas();
-    if (id === 'friends') { renderFriends(); pingFriends(); }
-    if (id === 'ranks') { renderBoardBanner(); fillBoard(); if (lbTab === 'friends') pingFriends(); else Board.sync(); }
+    if (id === 'friends') { renderFriends(); pingFriends(); refreshDb(); }
+    if (id === 'ranks') { renderBoardBanner(); $('lbList').innerHTML = ''; fillBoard(); refreshRank(); if (lbTab === 'friends') { pingFriends(); refreshDb(); } }
   }
   document.querySelectorAll('#tabbar button').forEach(b => b.onclick = () => { Sfx.init(); Sfx.play('tick'); swapPick = null; show(b.dataset.tab); });
 
@@ -117,7 +118,7 @@
       if (!on && d) d.remove();
     };
     dot('shop', Progress.giftReady());
-    dot('friends', inReq.length > 0);
+    dot('friends', inReq.length > 0 || dbRows.some(r => r.dir === 'in'));
     { const g = $('btnSettings'), d = g && g.querySelector('.nb-dot'), want = !!username && acctReady && !Account.loggedIn();
       if (want && !d) g.insertAdjacentHTML('beforeend', '<i class="nb-dot"></i>'); if (!want && d) d.remove(); }
     try { renderNews(); } catch (e) {}   // (the updates code may not be set up yet on the very first call)
@@ -314,16 +315,17 @@
 
   // ---------------- leaderboards ----------------
   // ranked by highest arena reached, then total wins
-  // the Everyone board is passed along between players' games (see board.js)
-  Board.start(store, () => username ? { name: username, arena: Progress.arena(), wins: totalWins() } : null, () => !!G);
-  function pushBoard() { if (username) { Board.touch(); myRank = Board.rank(); } }
-  setTimeout(pushBoard, 1000);
-  setInterval(() => { if (!G) pushBoard(); }, 15000);
-  Board.onChange(() => { myRank = Board.rank(); if (screen === 'ranks') { renderBoardBanner(); if (lbTab === 'everyone') fillBoard(); } });
+  // the Everyone board: protected players, straight from the database
+  let boardTotal = 0;
+  function pushBoard() {}
+  async function refreshRank() {
+    boardTotal = await Account.boardCount();
+    myRank = Account.loggedIn() ? await Account.rankOf(Progress.arena(), totalWins()) : 0;
+    if (screen === 'ranks') renderBoardBanner();
+  }
   // the pill in the Leaderboard screen's header: your place
   function renderBoardBanner() {
-    const n = Board.list().length;
-    $('rankCount').textContent = myRank && n ? `You: #${myRank} of ${n}` : '';
+    $('rankCount').textContent = myRank && boardTotal ? `You: #${myRank} of ${boardTotal}` : boardTotal ? `${boardTotal} players` : '';
   }
   const medal = i => i < 3 ? ['\u{1F947}', '\u{1F948}', '\u{1F949}'][i] : '';
   function lbRow(r, i, sub) {
@@ -340,25 +342,29 @@
     const meRow = { name: username || 'You', arena: Progress.arena(), wins: totalWins() };
     if (lbTab === 'friends') {
       const known = [meRow], unknown = [];
+      dbRows.filter(r => r.dir === 'friend').forEach(r => known.push({ name: r.name, arena: r.arena, wins: r.wins, on: dbOnline(r) }));
       friends.forEach(f => {
-        const live = Net.info(f), bd = Board.byName(f), c = live && live.wins != null ? { arena: live.arena | 0, wins: live.wins | 0 } : friendInfo[f.toLowerCase()] || (bd && { arena: bd.arena, wins: bd.wins });
+        const live = Net.info(f), c = live && live.wins != null ? { arena: live.arena | 0, wins: live.wins | 0 } : friendInfo[f.toLowerCase()];
         if (c) known.push({ name: f, arena: c.arena, wins: c.wins, on: Net.isOnline(f) === true }); else unknown.push(f);
       });
       known.sort(byRank);
       list.innerHTML = known.map((r, i) => lbRow(r, i, r === meRow ? '' : r.on ? 'Online' : 'Last seen')).join('') +
         (unknown.length ? `<div class="lb-empty">Waiting to hear from: ${unknown.map(esc).join(', ')}<br>They show up once they're online with the new version.</div>` : '') +
-        (!friends.length ? '<div class="lb-empty">Add friends in the Friends tab to race them here!</div>' : '');
+        (!friends.length && !dbRows.some(r => r.dir === 'friend') ? '<div class="lb-empty">Add friends in the Friends tab to race them here!</div>' : '');
       $('lbMe').textContent = '';
       return;
     }
-    pushBoard();
-    const rows = Board.list(), shown = rows.slice(0, 100);
-    list.innerHTML = (shown.length ? shown.map((r, i) => lbRow(r, i)).join('') : '<div class="lb-empty">Nobody on the board yet!</div>') +
-      `<div class="lb-empty">${rows.length} player${rows.length === 1 ? '' : 's'} so far. The board fills in as players come online.</div>`;
+    const join = Account.loggedIn() ? '' : `<div class="acct-box risk"><b class="t">\u{1F512} You're not on the board yet</b><small>Only protected accounts show up here. Set a password to join.</small><div class="acct-btns"><button class="small-btn gold" id="lbProtect">Protect my account</button></div></div>`;
+    if (!list.innerHTML) list.innerHTML = '<div class="lb-empty">Loading...</div>';
+    const rows = await Account.top(100);
+    if (screen !== 'ranks' || lbTab !== 'everyone') return;
+    if (!rows) { list.innerHTML = join + '<div class="lb-empty">Couldn\'t load the leaderboard. Check your internet and try again.</div>'; }
+    else list.innerHTML = join + (rows.length ? rows.map((r, i) => lbRow(r, i)).join('') : '<div class="lb-empty">Nobody on the board yet. Protect your account to be first!</div>');
+    const lp = $('lbProtect'); if (lp) lp.onclick = () => { Sfx.init(); protectFlow(); };
     const inTop = myRank && myRank <= 100;
     $('lbMe').innerHTML = myRank && !inTop ? `You: <b>#${myRank}</b> · Arena ${Progress.arena() + 1} · ${totalWins()} wins` : '';
   }
-  document.querySelectorAll('#ranks .lb-tabs button').forEach(b => b.onclick = () => { Sfx.init(); Sfx.play('tick'); lbTab = b.dataset.t; fillBoard(); if (lbTab === 'friends') pingFriends(); else Board.sync(); });
+  document.querySelectorAll('#ranks .lb-tabs button').forEach(b => b.onclick = () => { Sfx.init(); Sfx.play('tick'); lbTab = b.dataset.t; $('lbList').innerHTML = ''; fillBoard(); if (lbTab === 'friends') { pingFriends(); refreshDb(); } else refreshRank(); });
 
   // ---------------- updates log ----------------
   const fmtDate = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }); };
@@ -454,8 +460,9 @@
       if (pw.length < 6) { err = 'Use at least 6 characters.'; continue; }
       if (pw !== pw2) { err = "The two passwords don't match."; continue; }
       toast('Protecting your account...');
+      if (await nameIsReserved(username)) { err = `"${username}" already belongs to a protected account. Change your name in Settings first.`; continue; }
       const r = await Account.signUp(username, pw);
-      if (r.ok) { Sfx.play('win'); renderStats(); await modal(`<h3>\u2705 Account protected!</h3><p>Your game now saves online. On a new phone or browser, tap <b>Log in</b> and use <b>${esc(username)}</b> + your password.</p>`, [{ label: 'Nice!', cls: 'green' }]); return; }
+      if (r.ok) { await beat(); refreshDb(); Sfx.play('win'); renderStats(); await modal(`<h3>\u2705 Account protected!</h3><p>Your game now saves online. On a new phone or browser, tap <b>Log in</b> and use <b>${esc(username)}</b> + your password.</p>`, [{ label: 'Nice!', cls: 'green' }]); return; }
       err = r.err === 'taken' ? `Someone already protected the name "${username}". Change your name in Settings first.`
         : r.err === 'weak' ? (r.msg || 'Pick a stronger password.')
         : r.err === 'confirm' ? "Couldn't finish: email confirmation is still turned on in Supabase."
@@ -517,9 +524,29 @@
   }
   Account.init(SP).then(async ok => {
     acctReady = ok; renderStats();
-    if (ok && Account.loggedIn()) { await syncDown(); Account.push(); }
+    if (ok && Account.loggedIn()) { await syncDown(); Account.push(); beat(); refreshDb(); }
+    else if (ok) checkMyName();
   });
   setInterval(() => { if (Account.loggedIn() && !G) Account.push(); }, 20000);
+  // protected players: keep your public card current (this is also how friends see you online / in a fight)
+  async function beat() {
+    if (!Account.loggedIn() || !username || document.hidden) return;
+    const r = await Account.saveProfile(username, Progress.arena(), totalWins(), !!G);
+    if (r === 'taken') toast(`Someone else owns the name "${username}".`);
+  }
+  setInterval(beat, 30000);
+  // a name owned by a protected account can't be used by anyone else
+  async function nameIsReserved(name) {
+    const o = await Account.nameOwner(name);
+    return !!o && o !== Account.myId();
+  }
+  async function checkMyName() {
+    if (!username || Account.loggedIn()) return;
+    if (await nameIsReserved(username)) {
+      await modal(`<h3>Name taken</h3><p>"${esc(username)}" now belongs to a protected account. Pick a new name to keep playing (your progress stays).</p>`, [{ label: 'Pick a new name', cls: 'green' }]);
+      askName(true);
+    }
+  }
   document.addEventListener('visibilitychange', () => {
     if (!Account.loggedIn()) return;
     if (document.hidden) Account.push(); else syncDown();
@@ -546,6 +573,7 @@
       if (change && pick === 0) return;
       if (!/^[A-Za-z0-9_]{3,16}$/.test(typed)) { err = 'Use 3 to 16 letters, numbers or _'; continue; }
       if (change && typed.toLowerCase() === username.toLowerCase() && Net.isReady()) { username = typed; store.set('name', username); renderStats(); return; }
+      if (await nameIsReserved(typed)) { err = `"${typed}" belongs to a protected account. Pick another name, or Log in if it's yours.`; continue; }
       netState = 'wait'; renderStats();
       const r = await Net.start(typed);
       if (!r.ok && r.why === 'taken') { err = `"${typed}" is taken (or you have the game open in another tab).`; netState = 'off'; continue; }
@@ -812,6 +840,72 @@
   }
 
   // ---------------- friends ----------------
+  // Two kinds of friends live side by side:
+  //  - database friends: both of you protected your accounts. Requests, the list, arena/wins and online status come from Supabase.
+  //  - phone-to-phone friends (the "friends" list below): at least one of you hasn't protected yet. Same as before.
+  // dbRows (declared at the top): [{ id, dir: 'in'|'out'|'friend', owner, name, arena, wins, online_at, fight }]
+  const dbFind = (name, dir) => dbRows.find(r => r.name.toLowerCase() === String(name).toLowerCase() && (!dir || r.dir === dir));
+  const dbIn = n => dbFind(n, 'in'), dbOut = n => dbFind(n, 'out'), dbFriend = n => dbFind(n, 'friend');
+  const dbNames = dir => dbRows.filter(r => r.dir === dir).map(r => r.name);
+  const dbOnline = r => !!r && !!r.online_at && Date.now() - Date.parse(r.online_at) < 75000;
+  let dbBusy = false, dbSeen = null;
+  async function refreshDb() {
+    if (dbBusy || !Account.loggedIn()) { if (!Account.loggedIn()) dbRows = []; return; }
+    dbBusy = true;
+    try {
+      const rows = await Account.friendships();
+      if (!rows) return;
+      // a request from someone who's already your phone-to-phone friend: accept it, so you two move over to the database
+      for (const r of rows) if (r.dir === 'in' && inList(friends, r.name) && await Account.accept(r.id)) r.dir = 'friend';
+      dbRows = rows;
+      // anyone who's now a database friend / request doesn't also need the old phone-to-phone entry
+      const moved = n => dbRows.some(r => same(r.name, n));
+      const before = friends.length + inReq.length + sentReq.length;
+      friends = friends.filter(n => !moved(n)); inReq = inReq.filter(n => !moved(n)); sentReq = sentReq.filter(n => !moved(n));
+      if (friends.length + inReq.length + sentReq.length !== before) { saveFriends(); saveReqs(); }
+      // new requests pop up; requests you sent that got accepted get a toast
+      const seen = dbSeen; dbSeen = {};
+      dbRows.forEach(r => { dbSeen[r.id] = r.dir; });
+      if (seen) dbRows.forEach(r => {
+        if (r.dir === 'in' && !seen[r.id]) { Sfx.play('ding'); if (!reqShown.has(r.name.toLowerCase())) reqQueue.push(r.name); }
+        if (r.dir === 'friend' && seen[r.id] === 'out') { Sfx.play('ding'); toast(`${r.name} accepted your friend request!`); }
+      });
+      else dbRows.forEach(r => { if (r.dir === 'in' && !reqShown.has(r.name.toLowerCase())) reqQueue.push(r.name); });
+      renderStats();
+      if (screen === 'friends') renderFriends();
+      if (screen === 'ranks' && lbTab === 'friends') fillBoard();
+    } finally { dbBusy = false; }
+  }
+  setInterval(() => { if (!G && !document.hidden) refreshDb(); }, 20000);
+  // returns true / false if the database handled it, or null when they aren't protected (then the old way is used)
+  async function dbRequest(name) {
+    if (!Account.loggedIn()) return null;
+    if (dbFriend(name)) { toast('Already your friend'); return false; }
+    if (dbOut(name)) { toast(`You already sent ${name} a request`); return false; }
+    if (dbIn(name)) { await dbAccept(name); return true; }
+    const p = await Account.profileByName(name);
+    if (p === null) return null;            // couldn't check: fall back to the old way
+    if (!p) return null;                    // not a protected player
+    if (p.owner === Account.myId()) { toast("That's you!"); return false; }
+    const r = await Account.sendRequest(p.owner);
+    if (r === 'err') { toast("Couldn't send the request. Try again."); return false; }
+    toast(r === 'friends' ? `You and ${p.name} are now friends!` : r === 'already' ? `You and ${p.name} are already connected` : `Friend request sent to ${p.name}!`);
+    await refreshDb();
+    return true;
+  }
+  async function dbAccept(name) {
+    const r = dbIn(name); if (!r) return;
+    if (await Account.accept(r.id)) { r.dir = 'friend'; dbSeen && (dbSeen[r.id] = 'friend'); toast(`${r.name} is now your friend!`); }
+    else toast("Couldn't accept. Try again.");
+    await refreshDb();
+  }
+  async function dbRemove(name) {
+    const r = dbFind(name); if (!r) return;
+    if (await Account.removeFriendship(r.id)) dbRows = dbRows.filter(x => x !== r);
+    renderStats();
+    if (screen === 'friends') renderFriends();
+    await refreshDb();
+  }
   function saveFriends() { store.set('friends', friends); }
   const same = (a, b) => a.toLowerCase() === b.toLowerCase();
   const inList = (arr, n) => arr.some(x => same(x, n));
@@ -826,6 +920,7 @@
   async function requestFriend(name) {
     name = name.trim();
     if (!validName(name)) return false;
+    { const d = await dbRequest(name); if (d !== null) return d; }
     if (inList(friends, name)) { toast('Already your friend'); return false; }
     if (inList(inReq, name)) { acceptReq(inReq.find(n => same(n, name))); return true; }
     if (inList(sentReq, name)) { toast(`You already sent ${name} a request`); return false; }
@@ -844,6 +939,7 @@
     if (screen === 'friends') setTimeout(pingFriends, 500);
   }
   function acceptReq(name) {
+    if (dbIn(name)) { dbAccept(name); return; }
     if (!addFriend(name, true)) { dropReq(name); return; }
     declinedReq = declinedReq.filter(n => !same(n, name)); saveReqs();
     if (Net.isReady()) Net.sendFriendOk(name);
@@ -851,6 +947,7 @@
     if (screen === 'friends') { renderFriends(); pingFriends(); }
   }
   function declineReq(name) {
+    if (dbIn(name)) { dbRemove(name); return; }
     inReq = inReq.filter(n => !same(n, name));
     if (!inList(declinedReq, name)) declinedReq.push(name);
     saveReqs();
@@ -877,7 +974,7 @@
   async function flushReqPopups() {
     while (reqQueue.length && !G && !modalResolve && MENU.includes(screen) && !opening && !document.querySelector('.chestfx:not(.hidden)')) {
       const name = reqQueue.shift();
-      if (!inList(inReq, name) || reqShown.has(name.toLowerCase())) continue;
+      if ((!inList(inReq, name) && !dbIn(name)) || reqShown.has(name.toLowerCase())) continue;
       reqShown.add(name.toLowerCase());
       const k = await modal(`<h3>Friend request</h3><div class="req-pop">${avatarHtml(name, true)}</div><p><b>${esc(name)}</b> wants to be your friend!</p>`,
         [{ label: 'Decline', cls: 'gray' }, { label: 'Later', cls: 'blue' }, { label: 'Accept', cls: 'green' }]);
@@ -915,11 +1012,13 @@
     $('myNameHint').textContent = username;
     $('myAvatar').outerHTML = avatarHtml(username || '?', true).replace('class="avatar big"', 'class="avatar big" id="myAvatar"');
     $('myArenaHint').textContent = `${ARENA_ICO} Arena ${Progress.arena() + 1} · ${netState === 'on' ? 'online' : 'offline'}`;
-    $('friendCount').textContent = friends.length ? `${friends.filter(f => Net.isOnline(f) === true).length} online` : '';
+    const allIn = inReq.concat(dbNames('in')), allSent = sentReq.concat(dbNames('out')), allFriends = friends.concat(dbNames('friend'));
+    const isOn = f => { const d = dbFriend(f); return d ? dbOnline(d) : Net.isOnline(f) === true; };
+    $('friendCount').textContent = allFriends.length ? `${allFriends.filter(isOn).length} online` : '';
     const rb = $('reqBox'); rb.innerHTML = '';
-    if (inReq.length) {
-      rb.innerHTML = `<div class="label"><span>Friend requests</span><small>${inReq.length}</small></div>`;
-      inReq.forEach(name => {
+    if (allIn.length) {
+      rb.innerHTML = `<div class="label"><span>Friend requests</span><small>${allIn.length}</small></div>`;
+      allIn.forEach(name => {
         const row = document.createElement('div'); row.className = 'friend req';
         row.innerHTML = `${avatarHtml(name)}<div class="f-txt"><b></b><span class="req-tag">Wants to be your friend</span></div><button class="small-btn green">Accept</button><button class="icon-btn" title="Decline">&#10005;</button>`;
         row.querySelector('.f-txt b').textContent = name;
@@ -929,20 +1028,21 @@
       });
     }
     const sb = $('sentBox'); sb.innerHTML = '';
-    if (sentReq.length) {
+    if (allSent.length) {
       sb.innerHTML = '<div class="label"><span>Sent requests</span></div>';
-      sentReq.forEach(name => {
+      allSent.forEach(name => {
         const row = document.createElement('div'); row.className = 'friend sent';
         row.innerHTML = `${avatarHtml(name)}<div class="f-txt"><b></b><span>Waiting for them to accept...</span></div><button class="icon-btn" title="Cancel request">&#10005;</button>`;
         row.querySelector('.f-txt b').textContent = name;
-        row.children[2].onclick = () => { sentReq = sentReq.filter(n => !same(n, name)); saveReqs(); renderFriends(); };
+        row.children[2].onclick = () => { if (dbOut(name)) { dbRemove(name); return; } sentReq = sentReq.filter(n => !same(n, name)); saveReqs(); renderFriends(); };
         sb.appendChild(row);
       });
     }
     const list = $('friendList'); list.innerHTML = '';
-    if (!friends.length) list.innerHTML = '<div class="empty-state"><span class="es-ico">\u{1F465}</span><b>No friends yet</b>Type a friend\'s username above and tap Add.<br>They get a friend request, and show up here once they accept.</div>';
-    friends.forEach(name => {
-      const on = Net.isOnline(name), info = Net.info(name);
+    if (!allFriends.length) list.innerHTML = '<div class="empty-state"><span class="es-ico">\u{1F465}</span><b>No friends yet</b>Type a friend\'s username above and tap Add.<br>They get a friend request, and show up here once they accept.</div>';
+    allFriends.forEach(name => {
+      const d = dbFriend(name);
+      const on = d ? dbOnline(d) : Net.isOnline(name), info = d ? { arena: d.arena, fight: d.fight } : Net.info(name);
       const row = document.createElement('div'); row.className = 'friend';
       const fight = on === true && info && info.fight;   // online but in a battle right now
       const status = fight ? '<span class="fight">⚔️ In fight</span>' : on === true ? '<span class="on">● Online</span>' : on === undefined ? '<span>Checking...</span>' : '<span>Offline</span>';
@@ -953,12 +1053,12 @@
       row.children[2].onclick = () => { Sfx.init(); pickModeAndChallenge(name); };
       row.children[3].onclick = async () => {
         const k = await modal(`<h3>Remove friend?</h3><p>Remove ${esc(name)} from your friends?</p>`, [{ label: 'Keep', cls: 'gray' }, { label: 'Remove', cls: 'red' }]);
-        if (k === 1) { friends = friends.filter(f => f !== name); saveFriends(); renderFriends(); }
+        if (k === 1) { if (dbFriend(name)) { dbRemove(name); return; } friends = friends.filter(f => f !== name); saveFriends(); renderFriends(); }
       };
       list.appendChild(row);
     });
     const rl = $('recentList'); rl.innerHTML = '';
-    const rec = (P().recent || []).filter(n => !inList(friends, n) && !inList(sentReq, n) && !inList(inReq, n));
+    const rec = (P().recent || []).filter(n => !inList(allFriends, n) && !inList(allSent, n) && !inList(allIn, n));
     if (!rec.length) rl.innerHTML = '<div class="hint">People you battle show up here so you can add them.</div>';
     rec.forEach(name => {
       const row = document.createElement('div'); row.className = 'friend';
