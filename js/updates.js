@@ -2,6 +2,11 @@
 // Every time an update is pushed live, add a new entry at the TOP with the version (the ?v= number),
 // the date it went out (YYYY-MM-DD), a short title and plain bullet points.
 const UPDATES = [
+  { v: 55, date: '2026-11-27', title: 'Spell upgrades', notes: [
+    'Upgrading Blinker Checkpoint now makes the cloud bigger, the slow stronger and last longer (level 9: 15% speed for 6 s).',
+    'Upgrading Steroids now makes the area bigger, the boost stronger and last longer (level 9: 60% faster for 10 s).',
+    'Tap a card to see its numbers for your level.',
+  ] },
   { v: 54, date: '2026-11-27', title: 'Boss battle clock', notes: [
     'Boss battles (CPU arenas and Boss Raid) no longer have a 3 minute timer from the start.',
     'There\'s no time limit until you take one of the boss\'s towers. Then you have 5 minutes to finish him off.',

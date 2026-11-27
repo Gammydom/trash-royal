@@ -659,9 +659,12 @@
     if (def.speed) rows.push(['Speed', sp(def.speed)]);
     if (def.targets && def.targets !== 'none') rows.push(['Targets', tg[def.targets]]);
     if (def.lifetime) rows.push(['Lasts', def.lifetime + 's']);
-    if (def.radius) rows.push(['Radius', def.radius]);
+    const ss = spellStats(def, lvl);
+    if (def.slow) rows.push(['Slows to', Math.round(ss.slow * 100) + '% speed']);
+    if (def.rage) rows.push(['Boost', '+' + Math.round((ss.rage - 1) * 100) + '% speed']);
+    if (def.radius) rows.push(['Radius', ss.radius]);
     if (def.stun) rows.push(['Stun', def.stun + 's']);
-    if (def.dur) rows.push(['Lasts', def.dur + 's']);
+    if (def.dur) rows.push(['Lasts', ss.dur + 's']);
     return '<div class="stats">' + rows.map(x => `<div>${x[0]}<b>${esc(x[1])}</b></div>`).join('') + '</div>';
   }
   async function cardInfo(id) {
@@ -1227,6 +1230,7 @@
     const botLv = {}; botDeck.forEach(id => botLv[id] = lvl);
     G = newMatch('cpu', `${ar.cpu} (Lv ${lvl})`, ai);
     G.boss = [null, ar.boss && BOSSES[ar.boss] ? ar.boss : null];     // the arena's boss stands where their house was
+    G.lvCount = true;
     G.sim = new Sim([deck, botDeck], { levels: [myLevels(), botLv], towerLevel: [Progress.kingLevel(deck), lvl], boss: G.boss, phase2: ar.boss === 'orville' ? 'orville2' : null, bossClock: G.boss[1] ? 300 : 0 });
     if (ar.boss === 'orville') prefetchGigachad();   // the CPU fills energy exactly like you; harder arenas = better cards, levels and play
     G.bot = new Bot(G.sim, 1, { react: ar.react, skill: ar.skill, defend: ar.defend, daze: ar.daze });   // early arenas: CPUs that miss your troops and zone out
@@ -1243,6 +1247,7 @@
     const mode = MODES.find(m => m.id === info.mode) || MODES[0];
     G = newMatch(role, oppName, info.arena);
     G.modeName = mode.name;
+    G.lvCount = !!mode.levels;
     if (info.raidBoss === 'orville') prefetchGigachad();
     if (mode.raid) {   // Boss Raid: you and your friend share side 0 against a boss, his towers and a CPU
       const bid = okBoss(info.raidBoss), bi = BOSS_IDS.indexOf(bid), ai = Math.max(0, ARENAS.findIndex(a => a.boss === bid)), ar = ARENAS[ai];
@@ -2226,18 +2231,18 @@
     }
     const def = DEFS[z.type];
     const [sx, sy] = w2s(z.x, z.y);
-    const R = (def.radius || 2) * T;
+    const R = (z.r || def.radius || 2) * T, zDur = z.dur || def.dur;
     if (!over) {
       if (z.type === 'steroids') {
         ctx.fillStyle = `rgba(255,40,40,${0.18 + Math.sin(now * 8) * 0.06})`; ctx.strokeStyle = 'rgba(255,60,60,0.8)'; ctx.lineWidth = 3;
         ctx.beginPath(); ctx.arc(sx, sy, R, 0, 7); ctx.fill(); ctx.stroke();
       } else if (z.type === 'blinker') {
-        const left = 1 - z.t / def.dur;
+        const left = 1 - z.t / zDur;
         ctx.fillStyle = `rgba(200,195,215,${0.25 * left + 0.05})`; ctx.beginPath(); ctx.arc(sx, sy, R, 0, 7); ctx.fill();
         // Blinker Checkpoint (Erick): a big billowing smoke cloud that swells in, hangs there, then thins out
-        const hs = SPR.hotbox_fx, fade = Math.min(1, z.t / 0.3, Math.max(0, (def.dur - z.t) / 0.7)), grow = Math.min(1, 0.5 + z.t * 2);
+        const hs = SPR.hotbox_fx, fade = Math.min(1, z.t / 0.3, Math.max(0, (zDur - z.t) / 0.7)), grow = Math.min(1, 0.5 + z.t * 2);
         ctx.save(); ctx.globalAlpha = 0.8 * fade; ctx.translate(sx, sy); ctx.filter = 'brightness(1.25) saturate(0.4)';
-        if (hs) { const k = T * (def.radius / 3.9) * grow; ctx.scale(k, k); drawFrame(hs, 0, Math.floor(now * 8) % (hs.frames || 8)); }
+        if (hs) { const k = T * ((z.r || def.radius) / 3.9) * grow; ctx.scale(k, k); drawFrame(hs, 0, Math.floor(now * 8) % (hs.frames || 8)); }
         else { ctx.fillStyle = '#e8e6ef'; ctx.beginPath(); ctx.ellipse(0, -T * 0.5, R * grow, R * 0.6 * grow, 0, 0, 7); ctx.fill(); }
         ctx.restore(); ctx.filter = 'none';
       } else if ((z.type === 'meteor') && z.t < def.delay) {
@@ -2433,7 +2438,7 @@
     const [sx, sy] = w2s(x, y);
     if (def.kind === 'spell') {
       ctx.strokeStyle = ok ? 'rgba(255,255,255,0.9)' : 'rgba(255,60,60,0.9)'; ctx.fillStyle = ok ? 'rgba(255,255,255,0.15)' : 'rgba(255,60,60,0.15)'; ctx.lineWidth = 2.5;
-      ctx.beginPath(); ctx.arc(sx, sy, def.radius * T, 0, 7); ctx.fill(); ctx.stroke();
+      ctx.beginPath(); ctx.arc(sx, sy, spellStats(def, G.lvCount ? Progress.level(id) : 1).radius * T, 0, 7); ctx.fill(); ctx.stroke();
       return;
     }
     ctx.globalAlpha = ok ? 0.65 : 0.35;

@@ -36,7 +36,7 @@ const CARDS = [
   { id: 'toot', name: 'The Toot', cost: 2, kind: 'spell', radius: 2.5, dmg: 160, stun: 0.7, delay: 0, towerMul: 0.35, sfx: 'toot', word: 'PFFFT!',
     desc: 'A nasty fart cloud. Small damage and stuns everything caught in it.' },
   { id: 'blinker', name: 'Blinker Checkpoint', cost: 4, kind: 'spell', radius: 3, dmg: 0, slow: 0.25, dur: 4, delay: 0, sfx: 'blinker',
-    desc: 'A big smoke cloud. Everything caught in it slows way down for 4 seconds. Troops dropped in after it lands are not slowed.' },
+    desc: 'A big smoke cloud. Everything caught in it slows way down for 4 seconds (longer when upgraded). Troops dropped in after it lands are not slowed.' },
   { id: 'steroids', name: 'Steroids', cost: 2, kind: 'spell', radius: 3, rage: 1.4, dur: 6, delay: 0, sfx: 'rage', word: 'ROID RAGE!',
     desc: 'Your troops in the area move and attack way faster for a while.' },
   { id: 'pizzacannon', name: 'Pizza Cannon', cost: 3, kind: 'building', hp: 850, dmg: 130, hit: 0.9, range: 5.5, r: 0.8, lifetime: 30,

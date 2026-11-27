@@ -9,6 +9,14 @@ function d2(a, b) { const dx = a.x - b.x, dy = a.y - b.y; return dx * dx + dy * 
 
 // card/tower level -> stat multiplier (+10% per level)
 const LV = l => 1 + 0.1 * ((l || 1) - 1);
+// spells with no damage grow in other ways with each level (Erick: all three for both)
+// Blinker: lasts 4 > 6 s, slows to 25% > 15% speed, radius 3 > 3.8. Steroids: lasts 6 > 10 s, 40% > 60% faster, radius 3 > 3.8 (level 1 > 9)
+const SPELL_GROW = { blinker: { radius: 0.1, dur: 0.25, slow: -0.0125 }, steroids: { radius: 0.1, dur: 0.5, rage: 0.025 } };
+function spellStats(def, lvl) {
+  const k = Math.max(0, (lvl || 1) - 1), g = SPELL_GROW[def.id] || {}, o = {};
+  for (const f of ['radius', 'dur', 'slow', 'rage']) if (def[f] != null) o[f] = Math.round((def[f] + (g[f] || 0) * k) * 10000) / 10000;
+  return o;
+}
 
 class Sim {
   // opts: { levels: [{id: lvl}, {id: lvl}], towerLevel: [l0, l1], elixirMul: [m0, m1], speedMul, time, firstCrown }
@@ -188,11 +196,12 @@ class Sim {
     return out;
   }
   castSpell(owner, def, x, y, lm = 1) {
-    const z = { id: this.nid++, type: def.id, owner, x, y, r: def.radius, t: 0, dur: def.dur || Math.max(def.delay || 0, 0.8) + 0.4, done: false, lm };
+    const ss = spellStats(def, Math.round((lm - 1) * 10) + 1);
+    const z = { id: this.nid++, type: def.id, owner, x, y, r: ss.radius, t: 0, dur: ss.dur || Math.max(def.delay || 0, 0.8) + 0.4, done: false, lm, rm: ss.rage };
     this.zones.push(z);
     if (def.id === 'toot') { this.hitArea(owner, x, y, def.radius, def.dmg * lm, true, true, def.towerMul, def.stun); z.done = true; this.ev({ e: 'sfx', n: 'toot' }); this.ev({ e: 'word', w: def.word, x, y }); }
     if (def.id === 'blinker') {
-      for (const e of this.ents) if (e.owner !== owner && e.hp > 0 && d2(e, { x, y }) <= (def.radius + e.r) ** 2) { e.slow = def.dur; e.slowMul = def.slow; }
+      for (const e of this.ents) if (e.owner !== owner && e.hp > 0 && d2(e, { x, y }) <= (ss.radius + e.r) ** 2) { e.slow = ss.dur; e.slowMul = ss.slow; }
       z.done = true; this.ev({ e: 'sfx', n: 'blinker' });
     }
     if (def.id === 'steroids') { this.ev({ e: 'sfx', n: 'rage' }); this.ev({ e: 'word', w: def.word, x, y }); }
@@ -254,7 +263,7 @@ class Sim {
         if (z.sfxT <= 0) { z.sfxT = 0.7; this.ev({ e: 'sfx', n: 'whoosh' }); }
       }
       if (z.type === 'steroids') {
-        for (const e of this.ents) if (e.owner === z.owner && e.kind === 'unit' && d2(e, z) <= (z.r + e.r) ** 2) e.rage = 1.5;
+        for (const e of this.ents) if (e.owner === z.owner && e.kind === 'unit' && d2(e, z) <= (z.r + e.r) ** 2) { e.rageMul = e.rage > 0 ? Math.max(e.rageMul || 1.4, z.rm || 1.4) : (z.rm || 1.4); e.rage = 1.5; }
       }
     }
     this.zones = this.zones.filter(z => z.t < z.dur);
@@ -384,7 +393,7 @@ class Sim {
     if (e.stun > 0) { e.stun -= dt; return; }
     let mul = 1;
     if (e.slow > 0) { e.slow -= dt; mul *= e.slowMul; if (e.slow <= 0) e.slowMul = 1; }
-    if (e.rage > 0) { e.rage -= dt; mul *= 1.4; }
+    if (e.rage > 0) { e.rage -= dt; mul *= e.rageMul || 1.4; }
     if (e.kind === 'tower' && !e.active) return;
     if (def.special) {
       if (e.specAnim > 0) { e.specAnim -= dt; return; }   // busy with the special move
@@ -649,7 +658,7 @@ class Sim {
       hand: p.hand, next: p.queue[0], mh: mate ? mate.hand : undefined, p2: this.phase2 ? 1 : 0,
       en: this.ents.map(e => [e.id, e.type === 'rubble' ? -1 : e.type === 'rubble_king' ? -2 : TYPE_IDX[e.type], e.owner, r(e.x), r(e.y), Math.ceil(e.hp), e.flags, e.dir, Math.round(e.atk * 10), e.tid || 0, Math.round((e.hop || 0) * 10), Math.ceil(e.maxHp), e.pl === 2 ? 1 : 0]),
       pr: this.projs.map(q => [q.id, q.style, r(q.x), r(q.y), q.owner]),
-      zo: this.zones.map(z => [z.id, z.type, r(z.x), r(z.y), Math.round(z.t * 100), z.owner]),
+      zo: this.zones.map(z => [z.id, z.type, r(z.x), r(z.y), Math.round(z.t * 100), z.owner, r(z.r || 0), Math.round((z.dur || 0) * 100)]),
       over: this.over ? 1 : 0, win: this.winner,
     };
   }
@@ -667,6 +676,6 @@ function unpackSnapshot(s) {
         owner: a[2], x: f(a[3]), y: f(a[4]), hp: a[5], maxHp: a[11] || def.hp || 1, r: def.r || 0, air: !!def.air, flags: a[6], dir: a[7], atk: a[8] / 10, tid: a[9], hop: a[10] / 10, pl: a[12] ? 2 : 0 };
     }),
     projs: s.pr.map(a => ({ id: a[0], style: a[1], x: f(a[2]), y: f(a[3]), owner: a[4] })),
-    zones: s.zo.map(a => ({ id: a[0], type: a[1], x: f(a[2]), y: f(a[3]), t: a[4] / 100, owner: a[5], r: (DEFS[a[1]] || {}).radius })),
+    zones: s.zo.map(a => ({ id: a[0], type: a[1], x: f(a[2]), y: f(a[3]), t: a[4] / 100, owner: a[5], r: a[6] ? f(a[6]) : (DEFS[a[1]] || {}).radius, dur: a[7] ? a[7] / 100 : (DEFS[a[1]] || {}).dur })),
   };
 }
