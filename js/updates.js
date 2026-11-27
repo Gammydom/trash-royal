@@ -2,6 +2,10 @@
 // Every time an update is pushed live, add a new entry at the TOP with the version (the ?v= number),
 // the date it went out (YYYY-MM-DD), a short title and plain bullet points.
 const UPDATES = [
+  { v: 54, date: '2026-11-27', title: 'Boss battle clock', notes: [
+    'Boss battles (CPU arenas and Boss Raid) no longer have a 3 minute timer from the start.',
+    'There\'s no time limit until you take one of the boss\'s towers. Then you have 5 minutes to finish him off.',
+  ] },
   { v: 53, date: '2026-11-26', title: 'Battles across networks', notes: [
     'Fixed: challenging a friend on a different network (like home Wi-Fi vs mobile data) said they were offline and they never got the challenge.',
     'If your phones can\'t connect directly, the challenge and the battle now go through our server instead.',

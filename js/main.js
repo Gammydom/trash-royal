@@ -1227,7 +1227,7 @@
     const botLv = {}; botDeck.forEach(id => botLv[id] = lvl);
     G = newMatch('cpu', `${ar.cpu} (Lv ${lvl})`, ai);
     G.boss = [null, ar.boss && BOSSES[ar.boss] ? ar.boss : null];     // the arena's boss stands where their house was
-    G.sim = new Sim([deck, botDeck], { levels: [myLevels(), botLv], towerLevel: [Progress.kingLevel(deck), lvl], boss: G.boss, phase2: ar.boss === 'orville' ? 'orville2' : null });
+    G.sim = new Sim([deck, botDeck], { levels: [myLevels(), botLv], towerLevel: [Progress.kingLevel(deck), lvl], boss: G.boss, phase2: ar.boss === 'orville' ? 'orville2' : null, bossClock: G.boss[1] ? 300 : 0 });
     if (ar.boss === 'orville') prefetchGigachad();   // the CPU fills energy exactly like you; harder arenas = better cards, levels and play
     G.bot = new Bot(G.sim, 1, { react: ar.react, skill: ar.skill, defend: ar.defend, daze: ar.daze });   // early arenas: CPUs that miss your troops and zone out
     enterGame();
@@ -1253,7 +1253,7 @@
         const dMate = validDeck(info.deck) ? info.deck : DEFAULT_DECK.slice();
         const lvl = Math.min(MAX_LEVEL, ar.level + 1), botDeck = Progress.cpuDeck(ai), botLv = {}; botDeck.forEach(id => botLv[id] = lvl);
         G.sim = new Sim([deck.slice(), botDeck, dMate], { coop: true, boss: G.boss.slice(), levels: [{}, botLv, {}], towerLevel: [1, ar.level],
-          hpMul: [1, 1.5], phase2: bid === 'orville' ? 'orville2' : null });   // normal energy for everyone
+          hpMul: [1, 1.5], phase2: bid === 'orville' ? 'orville2' : null, bossClock: 300 });   // normal energy for everyone
         G.bot = new Bot(G.sim, 1, { react: ar.react, skill: Math.max(ar.skill, 0.35) });
       }
       enterGame();
@@ -1889,9 +1889,10 @@
     (st.hand || []).forEach((id, i) => slots[i].classList.toggle('poor', DEFS[id] && DEFS[id].cost > el));
     let rem, label = '';
     if (st.phase2) { $('timer').innerHTML = '\u221E<small>PHASE 2 \u00b7 x2</small>'; }
+    else if (st.regTime === Infinity) { $('timer').innerHTML = '\u221E<small>TAKE A TOWER</small>'; }   // boss battle: the clock starts when you take a boss tower
     else if (st.ot) { rem = Math.max(0, (st.regTime || REG_TIME) + OT_TIME - st.t); label = 'SUDDEN DEATH'; }
     else { rem = Math.max(0, (st.regTime || REG_TIME) - st.t); if (st.t > (st.regTime || REG_TIME) - 60) label = 'x2 ENERGY'; }
-    if (!st.phase2) { const m = Math.floor(rem / 60), s = Math.floor(rem % 60);
+    if (rem !== undefined) { const m = Math.floor(rem / 60), s = Math.floor(rem % 60);
     $('timer').innerHTML = `${m}:${String(s).padStart(2, '0')}${label ? `<small>${label}</small>` : ''}`; }
     if (!G.dbl && !st.phase2 && st.t > (st.regTime || REG_TIME) - 60 && !st.ot) { G.dbl = true; banner('DOUBLE ENERGY!', 1500); Sfx.play('overtime'); }
     for (const [id, n] of [['myCrowns', st.crowns[G.me]], ['oppCrowns', st.crowns[1 - G.me]]]) {

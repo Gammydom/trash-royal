@@ -16,7 +16,8 @@ class Sim {
     // opts.boss: [boss id | null, boss id | null] - a boss troop stands in place of that player's house
     // opts.coop: Boss Raid - a second player (slot 2) shares side 0 with their own deck, hand and energy
     this.o = Object.assign({ levels: [{}, {}, {}], towerLevel: [1, 1], elixirMul: [1, 1, 1], speedMul: 1, time: REG_TIME, firstCrown: false, boss: [null, null], hpMul: [1, 1], coop: false }, opts);
-    this.regTime = this.o.time;
+    // opts.bossClock: boss battles - no time limit until a boss tower (side 1) falls, then this many seconds on the clock
+    this.regTime = this.o.bossClock ? Infinity : this.o.time;
     this.t = 0; this.ents = []; this.projs = []; this.zones = []; this.events = [];
     this.nid = 1; this.elixir = this.o.coop ? [5, 5, 5] : [5, 5]; this.crowns = [0, 0];
     this.ot = false; this.over = false; this.winner = -1;
@@ -572,6 +573,11 @@ class Sim {
         if (e.type === 'king') { this.crowns[winner] = 3; this.end(winner); }
         else {
           this.crowns[winner]++;
+          if (this.o.bossClock && e.owner === 1 && !this.phase2 && !isFinite(this.regTime)) {
+            this.regTime = this.t + this.o.bossClock;
+            const m = Math.floor(this.o.bossClock / 60), s = this.o.bossClock % 60;
+            this.ev({ e: 'banner', w: `${m}:${String(s).padStart(2, '0')} ON THE CLOCK!` });
+          }
           for (const k of this.ents) if (k.type === 'king' && k.owner === e.owner) k.active = true;
           if (this.o.firstCrown) this.end(winner);
         }
@@ -639,7 +645,7 @@ class Sim {
     const r = v => Math.round(v * 20);
     const p = this.players[forOwner], mate = this.o.coop ? this.players[forOwner === 2 ? 0 : 2] : null;
     return {
-      t: Math.round(this.t * 100), el: Math.round(this.elixir[forOwner] * 100), cr: this.crowns, ot: this.ot ? 1 : 0, rt: this.regTime,
+      t: Math.round(this.t * 100), el: Math.round(this.elixir[forOwner] * 100), cr: this.crowns, ot: this.ot ? 1 : 0, rt: isFinite(this.regTime) ? this.regTime : -1,
       hand: p.hand, next: p.queue[0], mh: mate ? mate.hand : undefined, p2: this.phase2 ? 1 : 0,
       en: this.ents.map(e => [e.id, e.type === 'rubble' ? -1 : e.type === 'rubble_king' ? -2 : TYPE_IDX[e.type], e.owner, r(e.x), r(e.y), Math.ceil(e.hp), e.flags, e.dir, Math.round(e.atk * 10), e.tid || 0, Math.round((e.hop || 0) * 10), Math.ceil(e.maxHp), e.pl === 2 ? 1 : 0]),
       pr: this.projs.map(q => [q.id, q.style, r(q.x), r(q.y), q.owner]),
@@ -653,7 +659,7 @@ class Sim {
 function unpackSnapshot(s) {
   const f = v => v / 20;
   return {
-    t: s.t / 100, elixir: s.el / 100, crowns: s.cr, ot: !!s.ot, hand: s.hand, next: s.next, mateHand: s.mh, phase2: !!s.p2, over: !!s.over, winner: s.win, regTime: s.rt || REG_TIME,
+    t: s.t / 100, elixir: s.el / 100, crowns: s.cr, ot: !!s.ot, hand: s.hand, next: s.next, mateHand: s.mh, phase2: !!s.p2, over: !!s.over, winner: s.win, regTime: s.rt === -1 ? Infinity : (s.rt || REG_TIME),
     ents: s.en.map(a => {
       const type = a[1] === -1 ? 'rubble' : a[1] === -2 ? 'rubble_king' : TYPE_LIST[a[1]];
       const def = DEFS[type] || { kind: 'decor', r: 0 };
